@@ -1,0 +1,40 @@
+MODULE interface
+
+SUBROUTINE READ_COUPLING
+! This subroutine read switches from a input FILE
+! created because of the coupling of SWAT and DDSAT
+IMPLICIT NONE
+
+
+END SUBTOUTINE READ_COUPLING
+
+
+SUBROUTINE plant_inityr_I
+! Purpose read yearly initial values for plants. 
+IMPLICIT NONE
+use parm
+use DDSAT_DATA
+
+CALL XXXX
+END SUBROUTINE plant_inityr_I 
+
+
+SUBROUTINE ETPOT_I
+! Plant evaporation/transpiration
+IMPLICIT NONE
+USE PARM
+USE DDSAT_DATA
+
+CALL PET from DSSAT 
+END SUBROUTINE ETPOT_I
+
+SUBROUTINE ETACT_I
+! Evaporation from ground
+IMPLICIT NONE
+USE PARM
+USE DDSAT_DATA
+
+CALL ESR_SoilEvap !DSSAT 
+END SUBROUTINE ETPOT_I
+
+END MODULE interface

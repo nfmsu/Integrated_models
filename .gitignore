@@ -1,1 +1,12 @@
-*/
+# Compiled source, object and module files
+*.o*
+*.mod*
+*_mod*
+# Misc
+x*
+*.x
+*.log*
+\#*
+*~
+INPUT_SWAT/
+KOGA/

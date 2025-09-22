@@ -1,0 +1,14 @@
+*DSSAT Cropping System Model Ver. 1.2.3.004   -release    APR 09, 2025; 13:03:38
+
+ Unit  Filename
+  501  OUTINFO
+  502  OUTS
+  503  SEVAL
+  504  FILEF
+   10  FINPUT
+   25  DSPRO
+  505  WARNING.OUT
+  506  OUTWARN
+  507  OUTO
+  508  ERRORO
+   15  ERRORX

@@ -1,0 +1,1 @@
+       RCH      GIS   MON     AREAkm2  SED_INtons SED_OUTtons SAND_INtonsSAND_OUTtons SILT_INtonsSILT_OUTtons CLAY_INtonsCLAY_OUTtons SMAG_INtonsSMAG_OUTtons  LAG_INtons LAG_OUTtons  GRA_INtons GRA_OUTtons  CH_BNKtons  CH_BEDtons  CH_DEPtons  FP_DEPtons     TSSmg/L

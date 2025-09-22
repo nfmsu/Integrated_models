@@ -1,0 +1,29 @@
+
+ IPSOIL  YEAR DOY =    0   0
+ File does not exist:                                                          
+ RESCH048.SDA                                                                  
+ Default residue characteristics will be used.                                 
+
+ PUT_REAL  YEAR DOY =    0   0
+ Error transferring variable: SPi_Solublein ToSwat                             
+ Value not saved! Errors may result.                                           
+
+ PUT_REAL  YEAR DOY =    0   0
+ Error transferring variable: SPi_Solublein ToSwat                             
+ Value not saved! Errors may result.                                           
+
+ PUT_REAL  YEAR DOY =    0   0
+ Error transferring variable: SPi_Solublein ToSwat                             
+ Value not saved! Errors may result.                                           
+
+ IPPLNT  YEAR DOY =    0   0
+ Ecotype LAT001 not found in file:                                             
+   /mnt/modeller3/WATDEV/TOOLBOX/SourceCode_dssat-csm-os-master_v4.8/Data/Genot
+ Default ecotype parameters will be used.                                      
+
+ IPPHEN  YEAR DOY =    0   0
+ Unknown ERROR. Error number:  5010                                            
+ File: /mnt/modeller3/WATDEV/TOOLBOX/SourceC                                   
+    Line:    51                                                                
+    Error key: IPPHEN                                                          
+ Simulations terminated.                                                       

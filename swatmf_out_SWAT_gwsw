@@ -1,0 +1,4 @@
+ Groundwater/Surface Water exchange (m3/day)
+ for each SWAT Subbasin
+ Positive: Volume entering stream from the aquifer
+ Negative: Volume seeps from stream to the aquifer

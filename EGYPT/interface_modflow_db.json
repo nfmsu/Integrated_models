@@ -1,0 +1,111 @@
+{
+    "01SpatialSetup": {
+        "SWAT": {
+            "rasters": false, 
+            "river_path": "E:/PhD/QSWAT/one/Watershed/Shapes/riv1.shp", 
+            "copy": true, 
+            "sub_path": "E:/PhD/QSWAT/one/Watershed/Shapes/subs1.shp", 
+            "gridsize": 0.0, 
+            "hru_path": "E:/PhD/QSWAT/one/Watershed/Shapes/hru2.shp"
+        }, 
+        "p_txtinout": "E:\\PhD\\QSWAT\\one\\Scenarios\\Default\\TxtInOut", 
+        "Modflow": {
+            "raster": false, 
+            "gridsize": null
+        }, 
+        "SwatModflow": {
+            "rasters": false, 
+            "gridsize": null, 
+            "write_linkagefiles": false, 
+            "river_grid": false, 
+            "hru_dhru": false, 
+            "dhru_grid": false, 
+            "grid_dhru": false
+        }
+    }, 
+    "02Modflow": {
+        "AquiferThickness": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }, 
+        "modflowinput": false, 
+        "SpecificStorage": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }, 
+        "SpecificYield": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }, 
+        "ratiokk": null, 
+        "DEM": {
+            "path": null, 
+            "copy": false
+        }, 
+        "write_mf_input": false, 
+        "InitialHydraulicHead": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }, 
+        "condriv": null, 
+        "HydraulicConductivity": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }
+    }, 
+    "04Simulation": {
+        "Time": {
+            "StartingDate": null, 
+            "EndingDate": null
+        }, 
+        "Printout": {
+            "nyskip": null, 
+            "tstep": null
+        }, 
+        "ModflowTstep": {
+            "default": false, 
+            "tstep": null
+        }, 
+        "input": false, 
+        "Output": {
+            "ChannelDepth": false, 
+            "StageMODFLOWRiverCell": false, 
+            "obstable": null, 
+            "ExchangeMODFLOWRiverCell": false, 
+            "Percolation": false, 
+            "ExchangeSWATSubbasin": false, 
+            "Recharge": false
+        }, 
+        "write_input": false, 
+        "RT3D": {
+            "RT3DOutputFrequency": null, 
+            "RunRT3DwithMODFLOW": false
+        }
+    }, 
+    "03Rt3d": {
+        "rt3dinput": false, 
+        "write_rt3d_input": false, 
+        "LongitudinalDispersivity": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }, 
+        "ratiotl": null, 
+        "Porosity": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }, 
+        "rt3dactive": false, 
+        "DenitrificationRateConstant": {
+            "path": null, 
+            "copy": false, 
+            "value": null
+        }
+    }
+}

@@ -1,0 +1,4 @@
+ Groundwater/Surface Water exchange (L3/T)
+ for each MODFLOW River Cell
+ Positive: River water seeps to the aquifer
+ Negative: Groundwater flows from aquifer to river

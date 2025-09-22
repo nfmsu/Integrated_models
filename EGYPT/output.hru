@@ -1,0 +1,9 @@
+1
+    SWAT Mar 17 2015    VER 2012/Rev 636_smrt                                                            0/ 0/   0      0: 0: 0
+
+    General Input/Output section (file.cio):                                        
+    11/6/2024 12:00:00 AM ARCGIS-SWAT interface AV                                  
+                                                                                    
+
+
+LULC  HRU       GIS  SUB  MGT  MON   AREAkm2  PRECIPmm SNOFALLmm SNOMELTmm     IRRmm     PETmm      ETmm SW_INITmm  SW_ENDmm    PERCmm GW_RCHGmm DA_RCHGmm   REVAPmm  SA_IRRmm  DA_IRRmm   SA_STmm   DA_STmmSURQ_GENmmSURQ_CNTmm   TLOSSmm LATQGENmm    GW_Qmm    WYLDmm   DAILYCN TMP_AVdgC TMP_MXdgC TMP_MNdgCSOL_TMPdgCSOLARMJ/m2  SYLDt/ha  USLEt/haN_APPkg/haP_APPkg/haNAUTOkg/haPAUTOkg/ha NGRZkg/ha PGRZkg/haNCFRTkg/haPCFRTkg/haNRAINkg/ha NFIXkg/ha F-MNkg/ha A-MNkg/ha A-SNkg/ha F-MPkg/haAO-LPkg/ha L-APkg/ha A-SPkg/ha DNITkg/ha  NUPkg/ha  PUPkg/ha ORGNkg/ha ORGPkg/ha SEDPkg/haNSURQkg/haNLATQkg/ha NO3Lkg/haNO3GWkg/ha SOLPkg/ha P_GWkg/ha    W_STRS  TMP_STRS    N_STRS    P_STRS  BIOMt/ha       LAI   YLDt/ha  BACTPct   BACTLPct WTAB CLIm WTAB SOLm     SNOmm CMUPkg/haCMTOTkg/ha   QTILEmm TNO3kg/ha LNO3kg/ha  GW_Q_Dmm LATQCNTmm

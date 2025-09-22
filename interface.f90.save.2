@@ -1,0 +1,2927 @@
+MODULE interface2
+
+USE ModuleDefs
+USe ModuleData
+USE parm,ONLY:nhru
+IMPLICIT NONE
+LOGICAL::useDSSAT,origSWAT0,origSWAT1,origSWAT2,agro_forestry,origSWAT3,origSWAT4,origSWAT5
+LOGICAL::useSWAT=.TRUE.,useSWAT_M=.TRUE.
+CHARACTER(5)::GropMODEL
+CHARACTER(len=2),allocatable,save::OLD_CROP(:)
+CHARACTER(len=4),allocatable,save::PLANT_SOURCE(:)
+CHARACTER(len=5),allocatable,save::RESIDUE_TYPE(:)
+INTEGER::DSSAT_method=1,origSWAT=1
+INTEGER,SAVE::interface_ihru
+INTEGER,allocatable,save::year_old(:)
+INTEGER,allocatable,SAVE::PLANTING_DSSAT(:),YRPLT_interface(:),TILLNO_INTERFACE(:)
+INTEGER,allocatable::MDATE_interface(:)
+REAL,allocatable,SAVE::ORIGINAL_DSSAT(:,:,:)
+TYPE(ControlType),allocatable,save:: CONTROL_NEW(:)
+TYPE(SoilType),allocatable,save::SOILPROP_NEW(:)
+TYPE(SwitchType),save::KYTKIN
+TYPE(MulchType),allocatable,save::MULCH_NEW(:)
+TYPE(Plant_Growth),allocatable,save::P_GROWTH(:)
+TYPE(Plant_Growth)::Plant_Interface
+TYPE(FertType),allocatable,save::FERT_NEW(:)
+TYPE(Land_S),allocatable,save::LAND_NEW(:)
+TYPE(ToSwatType),allocatable,save::ToSwat_NEW(:)
+TYPE(OrgMatAppType),allocatable,save::ORG_FERT(:),ORG_RESIDUE(:)
+TYPE(TillType),allocatable,save::TILL_DATA(:)
+TYPE FileType
+	CHARACTER(LEN=12)::FILE_SPE,FILE_CUL,FILE_ECO,FILE_PST
+END TYPE FileType
+
+TYPE(FileType),SAVE::FILES(10)
+	
+
+
+CONTAINS
+
+SUBROUTINE interface_dormant
+USE parm
+IMPLICIT NONE
+
+real :: resnew,N_LOSS,P_LOSS,ORG_RESIDUE
+integer :: j
+j = 0
+      j = ihru
+interface_ihru=ihru
+!write(*,*)'interface_dormant,idorm=',idorm(j)
+!! check for beginning of dormant season
+      if (idc(idplt(j)) == 1 .or. idc(idplt(j)) == 4) return
+      if (idorm(j) == 0 .and. dayl(j)-dormhr(j) < daylmn(hru_sub(j)))   then
+
+        select case (idc(idplt(j)))
+        
+          !! make sure all operations are scheduled during growing season of warm season annual
+          case (1,4)
+            dorm_flag = 1
+            call operatn
+            dorm_flag = 0
+
+          !! beginning of forest dormant period
+          case (7)
+            idorm(j) = 1
+            resnew = 0.
+            resnew = bio_ms(j) * bio_leaf(idplt(j))            
+		ORG_RESIDUE=resnew            
+		N_LOSS=resnew*pltfr_n(j)
+		P_LOSS=resnew*pltfr_p(j)
+   
+
+            
+            !sol_rsd(1,j) = sol_rsd(1,j) + resnew
+            !sol_rsd(1,j) = Max(sol_rsd(1,j),0.)
+            !sol_fon(1,j) = resnew * pltfr_n(j) + sol_fon(1,j)
+            !sol_fop(1,j) = resnew * pltfr_p(j) + sol_fop(1,j)
+            bio_hv(icr(j),j) = bio_ms(j) + bio_hv(icr(j),j)
+            bio_yrms(j) = bio_yrms(j) + bio_ms(j) / 1000.
+            bio_ms(j) = bio_ms(j) * (1. - bio_leaf(idplt(j)))
+            plantn(j) = plantn(j) - resnew * pltfr_n(j)
+            plantp(j) = plantp(j) - resnew * pltfr_p(j)
+            strsw(j) = 1.
+            laiday(j) = alai_min(idplt(j))
+            phuacc(j) = 0.
+            laimxfr(j) = 0.        !Sue White - dormancy
+            ncrops(icr(j),j) = ncrops(icr(j),j) + 1
+
+          !! beginning of perennial (pasture/alfalfa) dormant period
+          case (3, 6)
+            idorm(j) = 1
+            resnew = 0.
+            resnew = bm_dieoff(idplt(j)) * bio_ms(j)
+		ORG_RESIDUE=resnew
+		N_LOSS=bm_dieoff(idplt(j)) * plantn(j)
+
+		P_LOSS=bm_dieoff(idplt(j)) *plantp(j)
+
+
+            !!insert new biomss by zhang
+            !!=============================
+            !if (cswat == 2) then
+	     !     ))
+	          	          
+	      !    resnew = bm_dieoff(idplt(j)) * bio_ms(j) 
+	     !     resnew_n = bm_dieoff(idplt(j)) * plantn(j)   	    
+        !	    resnew_ne = resnew_n + sf * sol_min_n
+        	        !Not sure 1000 should be here or not!
+        	    !RLN = 1000*(resnew * CLG/(resnew_n+1.E-5))
+        	        
+                
+                !update no3 and nh3 in soil
+            !    sol_no3(1,j) = sol_no3(1,j) * (1-sf)
+            !    sol_nh3(1,j) = sol_nh3(1,j) * (1-sf)
+            !end if
+            !!insert new biomss by zhang
+            !!===========================
+
+
+           ! sol_rsd(1,j) = sol_rsd(1,j) + resnew
+           ! sol_rsd(1,j) = Max(sol_rsd(1,j),0.)
+           ! sol_fon(1,j) = sol_fon(1,j) + bm_dieoff(idplt(j)) * plantn(j)
+           ! sol_fop(1,j) = sol_fop(1,j) +bm_dieoff(idplt(j)) * plantp(j)
+            bio_hv(icr(j),j) = bio_ms(j) * bm_dieoff(idplt(j)) + bio_hv(icr(j),j)
+            bio_yrms(j) = bio_yrms(j) + bio_ms(j) *bm_dieoff(idplt(j)) / 1000.
+            bio_ms(j) = (1. - bm_dieoff(idplt(j))) *bio_ms(j)
+            plantn(j) = (1. - bm_dieoff(idplt(j))) *plantn(j)
+            plantp(j) = (1. - bm_dieoff(idplt(j))) *plantp(j)
+            strsw(j) = 1.
+             laiday(j) = alai_min(idplt(j))
+             phuacc(j) = 0.
+!            ncrops(icr(j),j) = ncrops(icr(j),j) + 1
+
+          !! beginning of cool season annual dormant period
+          case (2, 5)
+            if (phuacc(j) < 0.75) then
+              idorm(j) = 1
+              strsw(j) = 1.
+            end if 
+          end select
+           if (imgt == 1) then
+            write (143,1000) subnum(j), hruno(j), iyr, i_mo, iida,hru_km(j),cpnm(idplt(j)),&
+	"START-DORM", phubase(j), phuacc(j),sol_sw(j),bio_ms(j), sol_rsd(1,j), sol_sumno3(j),sol_sumsolp(j)
+           end if
+           
+          end if
+
+!! check if end of dormant period
+        if (idorm(j) == 1 .and. dayl(j)-dormhr(j) .GE. daylmn(hru_sub(j)))then
+
+          select case (idc(idplt(j)))
+          
+            !! end of perennial dormant period
+            case (3, 6, 7)
+              idorm(j) = 0
+
+            !! end of cool season annual dormant period
+            case (2, 5)
+              idorm(j) = 0
+              phuacc(j) = 0.
+
+            end select
+            
+            if (imgt == 1) then
+                 write (143,1000) subnum(j), hruno(j), iyr, i_mo, iida,hru_km(j),cpnm(idplt(j)),&
+ 	"END-DORM", phubase(j), phuacc(j), sol_sw(j), bio_ms(j), sol_rsd(1,j), sol_sumno3(j),sol_sumsolp(j)
+            end if
+
+        end if
+
+1000  format (a5,1x,a4,3i6,1x,e10.5,1x,2a15,7f10.2)
+    !  return
+     ! 	end
+
+
+
+
+
+   ! Adding residue to the ground
+      ORG_FERT(interface_ihru)%NAPRES=ORG_FERT(interface_ihru)%NAPRES+1
+      ORG_FERT(interface_ihru) % RESDAT     = iyr*1000+iida
+      ORG_FERT(interface_ihru) % ResDepth   = sol_z(1,interface_ihru)
+      ORG_FERT(interface_ihru) % ResTYPE    = RESIDUE_TYPE(interface_ihru) ! CROP residue
+      ORG_FERT(interface_ihru) % ResMixPerc = 0.3 ! Arbitrary constant currently
+
+        ORG_FERT(interface_ihru) % ResWt=ORG_RESIDUE
+
+
+      ORG_FERT(interface_ihru) % ResE(1,N)  = N_LOSS
+      ORG_FERT(interface_ihru) % ResE(1,P)  = P_LOSS
+      ORG_FERT(interface_ihru) % ResLig= 0.175*(ORG_RESIDUE*0.70)
+
+      ORG_FERT(interface_ihru) % CumResWt   = ORG_FERT(interface_ihru)%CumResWt+sum(ORG_FERT(interface_ihru)%ResWt)
+      ORG_FERT(interface_ihru) % CumResE(:) = ORG_FERT(interface_ihru)%CumResE+sum(ORG_FERT(interface_ihru)%ResE,1)
+
+
+
+
+
+
+
+
+
+
+RETURN
+END SUBROUTINE interface_dormant
+
+
+
+SUBROUTINE interface_killop(day_number)
+USE parm
+IMPLICIT NONE
+INTEGER::day_number
+! SWAT ORIGINAL ROUTINE
+!CALL killop
+interface_ihru=ihru
+PLANTING_DSSAT(interface_ihru)=8
+MDATE_interface(interface_ihru)=(iyr+curyr-1)*1000+day_number
+YRPLT_interface(interface_ihru)=10000
+write(*,*)'interface_killop',interface_ihru
+write(*,*)'MDATE=',MDATE_interface(interface_ihru),'day=',day_number
+write(*,*)'----------END killop---------------------------------'
+RETURN
+END SUBROUTINE interface_killop
+
+SUBROUTINE interface_harvkillop(day_number)
+USE parm
+IMPLICIT NONE
+INTEGER::day_number
+! SWAT original routine
+!CALL harvkillop 
+interface_ihru=ihru
+
+PLANTING_DSSAT(interface_ihru)=5
+MDATE_interface(interface_ihru)=(iyr+curyr-1)*1000+day_number
+YRPLT_interface(interface_ihru)=10000
+write(*,*)'interface_harvkillop,PLANTING_DSSAT=',PLANTING_DSSAT(interface_ihru),'ihru=',interface_ihru
+write(*,*)'MDATE=',MDATE_interface(interface_ihru),'day',day_number
+write(*,*)'----------END harvkillop------------------------------------'
+!STOP
+RETURN
+END SUBROUTINE interface_harvkillop
+
+SUBROUTINE interface_newtillmix
+USE ModuleDefs
+USE ModuleData
+USE parm
+IMPLICIT NONE
+CHARACTER(len=5)::TILOP(NAPPL)
+INTEGER::II
+interface_ihru=ihru
+II=1
+SELECT CASE(tillnm(idtill))
+CASE('SOILFINS')
+CASE('ROTHOE')
+TILOP(II)='TI038'
+CASE('ROTERA')
+CASE('ROTOTILL')
+CASE('ROTOBEDDER')
+	TILOP='TI017'
+CASE('ROWBUCK')
+CASE('RIPPER')
+TILOP(II)='TI001'
+CASE('MIDBESTIR')
+TILOP='TI016'
+CASE('RODWEEDER')
+TILOP='TI037'	
+CASE('RODWHWPL')
+CASE('MULTIWDR')
+CASE('MLDBOARD')
+TILOP='TI041'
+CASE('CHISPLOW')
+TILOP='TI004'
+CASE('CCHPLOW')
+CASE('DISKPLOW')
+	TILOP='TI007'
+CASE('STUBMLCH')
+	TILOP='TI022'
+CASE('SUBCHPLW')
+	TILOP='TI002'
+CASE('ROWCOND')
+CASE('HIPPER')
+	TILOP='TI013'
+CASE('RICEROLL')
+	TILOP='TI024'
+CASE('PARAPLOW')
+	
+CASE('SBEDHIPR')
+CASE('RIPRSUBS')
+	TILOP='TI001'
+CASE('VRIPPER')
+	TILOP='TI001'
+CASE('BEDROLLER')
+	TILOP='TI024'
+CASE('BEDDER D')
+	TILOP='TI017'
+CASE('BEDDHIPR')
+	TILOP='TI017'
+CASE('BEDDKROW')
+	TILOP='TI017'
+CASE('BEDDER S')
+	TILOP='TI017'
+CASE('DSKBRMKR')
+	
+CASE('DKCHMTIL')
+	TILOP='TI006'
+CASE('OFFSETHV')
+	TILOP='TI008'
+CASE('OFFSETLT')
+	TILOP='TI006'
+CASE('ONE-WAYT')
+	TILOP='TI006'
+CASE('TANDEMPL')
+	TILOP='TI009'
+CASE('TANDEMRG')
+	TILOP='TI009'
+CASE('SINGLDIS')
+	TILOP='TI010'
+CASE('PWRMULTCH')
+	TILOP='TI022'
+CASE('BLADE10')
+	TILOP='TI018'
+CASE('FURWDIKE')
+CASE('BEETCULT')
+	TILOP='TI012'
+CASE('CLTIWEED')
+	TILOP='TI011'
+CASE('PACKER')
+	TILOP='TI024'
+CASE('DUCKFTC')
+	TILOP='TI011'
+CASE('FLDCULT')
+	TILOP='TI011'
+CASE('FURROWOUT')
+	
+CASE('MARKER')
+CASE('ROLLCULT')
+	TILOP='TI012'
+CASE('ROWCULT')
+	TILOP='TI012'
+CASE('DISCOVAT')
+	
+CASE('LEVELER')
+CASE('HARROW')
+	TILOP='TI015'
+CASE('CULMULCH')
+	TILOP='TI039'
+CASE('CULPKPUL')
+	TILOP='TI024'
+CASE('LANDLEVL')
+	
+CASE('LANDALL')
+CASE('LASRPLAN')
+CASE('LEVPLDIS')
+CASE('FLOAT')
+CASE('FLDCDSCR')
+CASE('LISTRMID')
+	TILOP='TI016'
+CASE('ROLLGROV')
+	TILOP='TI024'
+CASE('ROLPKRAT')
+	TILOP='TI024'
+CASE('ROLPKFRT')
+CASE('SANDFIGT')
+CASE('SEEDROLL')
+	TILOP='TI024'
+CASE('CRUSTBST')
+CASE('ROLLHRRW')
+	TILOP='TI039'
+CASE('TRIPLE K')
+	
+CASE('FINHARROW')
+	TILOP='TI015'
+CASE('FLEXHARW')
+	TILOP='TI015'
+CASE('SPIKETH')
+	TILOP='TI014'
+CASE('SPIKTOOTH')
+	TILOP='TI014'
+CASE('SPRGTOTH')
+	TILOP='TI014'
+END SELECT 
+!TILLNO(interface_ihru)=TILLNO(interface_ihru)+1
+
+CALL TILLAGE(CONTROL_NEW(interface_ihru),KYTKIN,SOILPROP_NEW(interface_ihru),TILL_DATA(interface_ihru),&
+TILLNO_INTERFACE(interface_ihru))
+
+
+RETURN
+END SUBROUTINE interface_newtillmix
+
+SUBROUTINE interface_burnop
+USE ModuleDefs
+USE ModuleData
+USE parm
+IMPLICIT NONE
+INTEGER::j
+REAL::pburn,xx
+interface_ihru=ihru
+j=interface_ihru
+IF(PLANT_SOURCE(interface_ihru).EQ.'DSAT')THEN
+P_GROWTH(j)%TOPWT=P_GROWTH(j)%TOPWT*burn_frlb ! Biomass
+P_GROWTH(j)%WTNCAN=P_GROWTH(j)%WTNCAN*burn_frlb ! N content of plant
+pburn=ToSwat_NEW(j)%SOM3E2(1)*burn_frlb
+ToSwat_NEW(j)%SOM3E2(1)=ToSwat_NEW(j)%SOM3E2(1)+pburn
+ToSwat_NEW(j)%PPlant2_kg=ToSwat_NEW(j)%PPlant2_kg-pburn ! P content of plant
+ORG_FERT(j)%ResWt=ORG_FERT(j)%ResWt*burn_frlb
+ORG_FERT(j)%ResE(1,N)=ORG_FERT(j)%ResE(1,N)*burn_frlb
+ToSwat_NEW(j)%SOM1E1(1)=ToSwat_NEW(j)%SOM1E1(1)*burn_frlb
+ToSwat_NEW(j)%SOM3E1(1)=ToSwat_NEW(j)%SOM3E1(1)*burn_frlb
+
+
+ELSE
+ xx = burn_frlb
+      bio_ms(j) = bio_ms(j) * xx
+      plantn(j) = plantn(j) * xx
+      pburn = plantp(j) *xx
+plantp(j) = plantp(j) - pburn
+ORG_FERT(j)%ResWt=ORG_FERT(j)%ResWt*burn_frlb
+ORG_FERT(j)%ResE(1,N)=ORG_FERT(j)%ResE(1,N)*burn_frlb
+ToSwat_NEW(j)%SOM1E1(1)=ToSwat_NEW(j)%SOM1E1(1)*burn_frlb
+ToSwat_NEW(j)%SOM3E1(1)=ToSwat_NEW(j)%SOM3E1(1)*burn_frlb
+ToSwat_NEW(j)%SOM3E2(1)=ToSwat_NEW(j)%SOM3E2(1)+pburn
+
+END IF
+
+
+RETURN
+END SUBROUTINE interface_burnop
+SUBROUTINE interface_graze(ii)
+ USE ModuleDefs
+ USE ModuleData
+ USE parm 
+IMPLICIT NONE 
+INTEGER::ii,j,it 
+REAL::EROTUS(4),ORG_RESIDUE,N_LOSS,P_LOSS
+REAL::dmi,dmii
+interface_ihru=ihru
+j=interface_ihru
+
+
+IF(PLANT_SOURCE(j) .EQ.'DSAT')THEN
+EROTUS=ORIGINAL_DSSAT(interface_ihru,:,1)-ORIGINAL_DSSAT(interface_ihru,:,2)
+         ! Putting a value to SWAT variable
+ORIGINAL_DSSAT(interface_ihru,4,1)=ORIGINAL_DSSAT(interface_ihru,4,1)-EROTUS(1) !BIOMAS
+ORIGINAL_DSSAT(interface_ihru,5,1)=ORIGINAL_DSSAT(interface_ihru,5,1)-EROTUS(2) !Nitrogen content of plant
+ORIGINAL_DSSAT(interface_ihru,6,1)=ORIGINAL_DSSAT(interface_ihru,6,1)-EROTUS(3) !Phosphorus content of plant
+       ! Putting a value to SWAT variable
+
+bio_ms(interface_ihru)=ORIGINAL_DSSAT(interface_ihru,4,1)
+plantn(interface_ihru)=ORIGINAL_DSSAT(interface_ihru,5,1)
+plantp(interface_ihru)=ORIGINAL_DSSAT(interface_ihru,6,1)
+END IF
+if (bio_ms(j) > bio_min(j)) then
+
+	!! determine new biomass in HRU
+        dmi = 0.
+        dmi = bio_ms(j)
+        bio_ms(j) = bio_ms(j) - bio_eat(j)
+        if (bio_ms(j) < bio_min(j)) bio_ms(j) = bio_min(j)
+       
+ 
+        !! adjust nutrient content of biomass
+        plantn(j) = plantn(j) - (dmi - bio_ms(j)) * pltfr_n(j)
+        plantp(j) = plantp(j) - (dmi - bio_ms(j)) * pltfr_p(j)
+        if (plantn(j) < 0.) plantn(j) = 0.
+        if (plantp(j) < 0.) plantp(j) = 0.
+
+        !! remove trampled biomass and add to residue
+        dmii = 0.
+        dmii = bio_ms(j)
+        bio_ms(j) = bio_ms(j) - bio_trmp(j)                 
+	ORG_RESIDUE=0.0  
+        if (bio_ms(j) < bio_min(j))  then
+          sol_rsd(1,j) = sol_rsd(1,j) + dmii - bio_min(j)
+	  ORG_RESIDUE=dmii-bio_min(j)	
+          bio_ms(j) = bio_min(j)          
+        else
+          sol_rsd(1,j) = sol_rsd(1,j) + bio_trmp(j)
+	ORG_RESIDUE=bio_trmp(j)                             
+        endif
+        sol_rsd(1,j) = Max(sol_rsd(1,j),0.)
+        bio_ms(j) = Max(bio_ms(j),0.)
+
+
+        N_LOSS=0.0
+	P_LOSS=0.0
+        !! adjust nutrient content of residue and biomass for
+        !! trampling
+        plantn(j) = plantn(j) - (dmii - bio_ms(j)) * pltfr_n(j)
+        plantp(j) = plantp(j) - (dmii - bio_ms(j)) * pltfr_p(j)
+        if (plantn(j) < 0.) plantn(j) = 0.
+        if (plantp(j) < 0.) plantp(j) = 0.
+	N_LOSS=(dmii - bio_ms(j)) * pltfr_n(j)
+	P_LOSS=(dmii - bio_ms(j)) * pltfr_p(j)
+
+	! Adding residue to the ground
+	ORG_FERT(interface_ihru)%NAPRES=ORG_FERT(interface_ihru)%NAPRES+1
+	ORG_FERT(interface_ihru) % RESDAT     = iyr*1000+iida
+      ORG_FERT(interface_ihru) % ResDepth   = sol_z(1,interface_ihru)
+      ORG_FERT(interface_ihru) % ResTYPE    = RESIDUE_TYPE(interface_ihru) ! CROP residue
+      ORG_FERT(interface_ihru) % ResMixPerc = 0.3 ! Arbitrary constant currently
+    
+        ORG_FERT(interface_ihru) % ResWt=ORG_RESIDUE
+
+
+      ORG_FERT(interface_ihru) % ResE(1,N)  = N_LOSS
+      ORG_FERT(interface_ihru) % ResE(1,P)  = P_LOSS
+      ORG_FERT(interface_ihru) % ResLig= 0.175*(ORG_RESIDUE*0.70)
+
+      ORG_FERT(interface_ihru) % CumResWt   = ORG_FERT(interface_ihru)%CumResWt+sum(ORG_FERT(interface_ihru)%ResWt)
+      ORG_FERT(interface_ihru) % CumResE(:) = ORG_FERT(interface_ihru)%CumResE+sum(ORG_FERT(interface_ihru)%ResE,1)
+
+
+end if		
+IF(PLANT_SOURCE(j).EQ.'DSAT')THEN
+ORIGINAL_DSSAT(interface_ihru,4,1)=bio_ms(interface_ihru)
+ORIGINAL_DSSAT(interface_ihru,5,1)=plantn(interface_ihru)
+ORIGINAL_DSSAT(interface_ihru,6,1)=plantp(interface_ihru)
+END IF
+
+
+
+
+IF(manure_kg(j)>0)THEN
+! Add manure
+it=0
+it=manure_id(j)
+      ORG_FERT(interface_ihru) % NAPRes     = ORG_FERT(interface_ihru)%NAPRes+1
+      ORG_FERT(interface_ihru) % RESDAT     = iyr*1000+iida
+      ORG_FERT(interface_ihru) % ResDepth   = sol_z(1,interface_ihru)
+      ORG_FERT(interface_ihru) % ResTYPE    = 'RE003' ! Barnyard manure
+      ORG_FERT(interface_ihru) % ResMixPerc = 0.3 ! Arbitrary constant currently
+
+      ORG_FERT(interface_ihru) % ResWt = manure_kg(interface_ihru)
+      ORG_FERT(interface_ihru) % ResE(1,N)  = fminn(it)*manure_kg(interface_ihru)
+      ORG_FERT(interface_ihru) % ResE(1,P)  = fminp(it)*manure_kg(interface_ihru)
+      ORG_FERT(interface_ihru) % ResLig= 0.175*(manure_kg(interface_ihru)*0.70)
+
+      ORG_FERT(interface_ihru) % CumResWt   = ORG_FERT(interface_ihru)%CumResWt+sum(ORG_FERT(interface_ihru)%ResWt)
+      ORG_FERT(interface_ihru) % CumResE(:) = ORG_FERT(interface_ihru)%CumResE+sum(ORG_FERT(interface_ihru)%ResE,1)
+
+END IF
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+!IF(ii==1)THEN !EROTUS=OLD-NEW 
+!	EROTUS=ORIGINAL_DSSAT(interface_ihru,:,1)-ORIGINAL_DSSAT(interface_ihru,:,2)
+!	 ! Putting a value to SWAT variable 
+!ORIGINAL_DSSAT(interface_ihru,4,1)=ORIGINAL_DSSAT(interface_ihru,4,1)-EROTUS(1)
+!ORIGINAL_DSSAT(interface_ihru,5,1)=ORIGINAL_DSSAT(interface_ihru,5,1)-EROTUS(2)
+!ORIGINAL_DSSAT(interface_ihru,6,1)=ORIGINAL_DSSAT(interface_ihru,6,1)-EROTUS(3) 
+!bio_ms(interface_ihru)=ORIGINAL_DSSAT(interface_ihru,4,1)
+!plantn(interface_ihru)=ORIGINAL_DSSAT(interface_ihru,5,1) 
+!plantp(interface_ihru)=ORIGINAL_DSSAT(interface_ihru,6,1) 
+!ELSE
+
+!ORIGINAL_DSSAT(interface_ihru,4,1)=bio_ms(interface_ihru)
+!ORIGINAL_DSSAT(interface_ihru,5,1)=plantn(interface_ihru)
+!ORIGINAL_DSSAT(interface_ihru,6,1)=plantp(interface_ihru)
+!END IF
+! Adding residue to the ground
+!ORG_FERT(interface_ihru)%NAPRES=ORG_FERT(interface_ihru)%NAPRES+1
+!ORG_FERT(interface_ihru) % RESDAT     = iyr*1000+iida
+   !   ORG_FERT(interface_ihru) % ResDepth   = sol_z(1,interface_ihru)
+  !    ORG_FERT(interface_ihru) % ResTYPE    = RESIDUE_TYPE(interface_ihru) ! CROP residue
+ !     ORG_FERT(interface_ihru) % ResMixPerc = 0.3 ! Arbitrary constant currently
+!	EHTO=bio_ms(interface_ihru)-bio_trmp(interface_ihru)
+!	IF(EHTO<bio_min(interface_ihru))THEN
+!	ORG_FERT(interface_ihru) % ResWt=bio_ms(interface_ihru)-bio_min(interface_ihru)
+!	bio_ms(interface_ihru)=bio_min(interface_ihru)
+!	ELSE
+!	END IF	
+
+!      ORG_FERT(interface_ihru) % ResWt = cfrt_kg(interface_ihru)
+!      ORG_FERT(interface_ihru) % ResE(1,N)  = fminn(it)*cfrt_kg(interface_ihru)
+!      ORG_FERT(interface_ihru) % ResE(1,P)  = fminp(it)*cfrt_kg(interface_ihru)
+!      ORG_FERT(interface_ihru) % ResLig= 0.175*(cfrt_kg(interface_ihru)*0.70)
+
+!      ORG_FERT(interface_ihru) % CumResWt   = ORG_FERT(interface_ihru)%CumResWt+sum(ORG_FERT(interface_ihru)%ResWt)
+!      ORG_FERT(interface_ihru) % CumResE(:) = ORG_FERT(interface_ihru)%CumResE+sum(ORG_FERT(interface_ihru)%ResE,1)
+
+RETURN
+END SUBROUTINE interface_graze
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_confert
+! Manure addition
+USE parm
+USE ModuleDefs 
+IMPLICIT NONE
+INTEGER::it
+interface_ihru=ihru
+       it = cfrt_id(interface_ihru)	
+
+      ORG_FERT(interface_ihru) % NAPRes     = ORG_FERT(interface_ihru)%NAPRes+1
+      ORG_FERT(interface_ihru) % RESDAT     = iyr*1000+iida
+      ORG_FERT(interface_ihru) % ResDepth   = sol_z(1,interface_ihru)
+      ORG_FERT(interface_ihru) % ResTYPE    = 'RE003' ! Barnyard manure
+      ORG_FERT(interface_ihru) % ResMixPerc = 0.3 ! Arbitrary constant currently 
+
+      ORG_FERT(interface_ihru) % ResWt = cfrt_kg(interface_ihru)
+      ORG_FERT(interface_ihru) % ResE(1,N)  = fminn(it)*cfrt_kg(interface_ihru)
+      ORG_FERT(interface_ihru) % ResE(1,P)  = fminp(it)*cfrt_kg(interface_ihru)	
+      ORG_FERT(interface_ihru) % ResLig= 0.175*(cfrt_kg(interface_ihru)*0.70)
+
+      ORG_FERT(interface_ihru) % CumResWt   = ORG_FERT(interface_ihru)%CumResWt+sum(ORG_FERT(interface_ihru)%ResWt)
+      ORG_FERT(interface_ihru) % CumResE(:) = ORG_FERT(interface_ihru)%CumResE+sum(ORG_FERT(interface_ihru)%ResE,1)
+      !ORG_FERT(interface_ihru) % CumResE(P) = CumResE(P)
+
+RETURN
+END SUBROUTINE interface_confert
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_anfert(SOURCE)
+!Automatic fertilizer when needed
+USE parm
+USE ModuleDefs
+USE ModuleData
+IMPLICIT NONE
+CHARACTER(len=4)::SOURCE
+LOGICAL::EHTO
+INTEGER::j,ifrt,ly
+REAL::targn,tsno3,tpno3,dwfert,phu_mod
+REAL::KERROS,TILAVUUS,MASSA,NO3_tmp,Nh4_tmp
+CALL GET(Plant_Interface)
+interface_ihru=ihru
+j=interface_ihru
+      ifrt = 0
+      ifrt = iafrttyp(j)
+!idp = idplt(j)
+!write(*,*)'ANFERT,SOURCE=',SOURCE
+EHTO=.FALSE.
+SELECT CASE(SOURCE)
+	CASE('SWAT')
+		
+		IF (strsn(j) < auto_nstrs(j))THEN
+			EHTO=.TRUE.
+			tpno3=plantn(j)	 ! kg/ha
+			phu_mod=phuacc(j)
+			PLANTING_DSSAT(j)=0
+		!write(*,*)'AUTO FERT,SWAT'
+		ELSE
+			EHTO=.FALSE.
+		END IF
+
+	CASE('DSAT')
+		EHTO=.TRUE.
+		tpno3=Plant_Interface%WTNTOT*10   ! g/m^2 =>kg/ha
+!	if(tpno3==0)then
+!	write(*,*)'imterface_anfert,STOPPING.tpno3=',tpno3
+!STOP 
+!END IF
+	!	phu_mod=sum(Plant_interface%PHZACC)/phu_plt(j)
+		phu_mod=phuacc(j)
+	write(*,*)'tpno3=',tpno3,'phu_mod=',phu_mod,phu_plt(j)
+	CASE DEFAULT
+		write(*,*)'Autofertilization wrong. Stopping'
+		STOP
+	END SELECT 
+
+if (EHTO) then
+	!write(*,*)'Approach',nstress(j)
+        targn = 0.
+        if (nstress(j) == 0) then                !! n target approach
+         tsno3 = 0.
+         !tpno3 = 0.
+         do ly = 1, sol_nly(j)
+           !tsno3 = tsno3 + sol_no3(ly,j) + sol_nh3(ly,j)
+	IF(ly>1)THEN
+		KERROS=( sol_z(ly,interface_ihru)-sol_z(ly-1,interface_ihru) )*0.001
+		TILAVUUS=hru_ha(interface_ihru)*10**4*KERROS
+		MASSA=TILAVUUS*sol_bd(ly,interface_ihru)*10**6
+	ELSE
+
+	        KERROS=(sol_z(ly,interface_ihru))*0.001
+                TILAVUUS=hru_ha(interface_ihru)*10**4*KERROS
+                MASSA=TILAVUUS*sol_bd(1,interface_ihru)*10**6
+
+	END IF
+
+
+
+		NO3_tmp=ToSwat_NEW(j)%NO3(ly)*MASSA/hru_ha(interface_ihru)
+		NH4_tmp=+ToSwat_NEW(j)%NH4(ly)*MASSA/hru_ha(interface_ihru)
+		
+	   tsno3=tsno3+NO3_tmp+NH4_tmp	
+         end do
+         !tpno3 = plantn(j) !WTNTOT in DSSAT
+	!tpno3=Plant_interface%WTNTOT
+         targn = tnylda(j) - tsno3 - tpno3
+         if (targn > auto_napp(j)) targn = auto_napp(j)
+         if (targn < 0.) targn = 0.
+
+         anano3(j) = anano3(j) + targn
+         if (anano3(j) >= auto_nyr(j)) then
+           targn = auto_nyr(j) - (anano3(j) - targn)
+           if (targn < 0.) targn = 0.
+           anano3(j) = auto_nyr(j)
+         endif
+
+        else                                  !! annual max approach
+          targn = auto_napp(j) * (1.-phu_mod)		!ORIG (1. - phuacc(j))
+          if (targn > auto_napp(j)) targn = auto_napp(j)
+
+          anano3(j) = anano3(j) + targn
+          if (anano3(j) >= auto_nyr(j)) then
+            targn = auto_nyr(j) - (anano3(j) - targn)
+            anano3(j) = auto_nyr(j)
+          endif
+       	 endif
+        if (targn <= 1.e-6) return
+endif
+
+!! add nutrients to soil based on nitrogen need
+        dwfert = 0.
+        if (fminn(ifrt) > 0.0001) then
+          dwfert = targn / fminn(ifrt)
+        else
+          dwfert = 0.
+        endif
+	!write(*,*)'ANFERT,dwfert=',dwfert,'targn=',targn,'SOURCE=',SOURCE,interface_ihru
+                Fert_NEW(interface_ihru) % ADDFUREA= dwfert*(1-afrt_surface(interface_ihru))
+                Fert_NEW(interface_ihru) % ADDOXU  = dwfert*afrt_surface(interface_ihru)
+                Fert_NEW(interface_ihru) % ADDOXH4 = (afrt_surface(interface_ihru))*dwfert *  fnh3n(j) * fminn(j)
+                Fert_NEW(interface_ihru) % ADDOXN3 = (afrt_surface(interface_ihru))*dwfert *   (1. - fnh3n(j)) * fminn(j)
+                Fert_NEW(interface_ihru) % ADDSNH4 =(1-afrt_surface(interface_ihru))*dwfert *  fnh3n(j) * fminn(j)
+                Fert_NEW(interface_ihru) % ADDSNO3 = (1-afrt_surface(interface_ihru))*dwfert*(1. - fnh3n(j)) * fminn(j)
+                Fert_NEW(interface_ihru) % ADDUREA = dwfert*(1-afrt_surface(interface_ihru))
+                Fert_NEW(interface_ihru) % ADDSPi  = (1-afrt_surface(interface_ihru))*dwfert*fminp(j)
+                Fert_NEW(interface_ihru) % ADDSKi  =0.0
+                Fert_NEW(interface_ihru) % AMTFER  =   Fert_NEW(interface_ihru) % AMTFER +fminn(j)
+                Fert_NEW(interface_ihru) % AppType = 'UNIFORM'
+                Fert_NEW(interface_ihru) % FERTDAY = iyr*1000+iida
+                Fert_NEW(interface_ihru) % FERDEPTH= 10.0 ! Constant in a SWAT
+                Fert_NEW(interface_ihru) % FERTYPE = 3
+                Fert_NEW(interface_ihru) % NAPFER  = Fert_NEW(interface_ihru) % NAPFER+1
+                Fert_NEW(interface_ihru) % UNINCO  = .FALSE.
+                Fert_NEW(interface_ihru) % FERMIXPERC = 0
+
+
+
+
+!	CALL PUT(Fert_NEW(interface_ihru))	
+	!	write(*,*)'END interface_ANFERT'
+	
+
+
+END SUBROUTINE interface_anfert
+
+
+SUBROUTINE interface_FILE(FILES)
+IMPLICIT NONE
+!interface_ihru=ihru
+TYPE(FileType):: FILES(10)
+
+FILES(1)%FILE_CUL='SBGRO048.CUL'
+FILES(1)%FILE_SPE='SBGRO048.SPE'
+FILES(1)%FILE_ECO='SBGRO048.ECO'
+FILES(1)%FILE_PST='SBGRO048.PST'
+
+FILES(2)%FILE_CUL='CPGRO048.CUL'
+FILES(2)%FILE_SPE='CPGRO048.SPE'
+FILES(2)%FILE_ECO='CPGRO048.ECO'
+FILES(2)%FILE_PST='CPGRO048.PST'
+
+FILES(3)%FILE_CUL='LEGRO048.CUL'
+FILES(3)%FILE_SPE='LEGRO048.SPE'
+FILES(3)%FILE_ECO='LEGRO048.ECO'
+FILES(3)%FILE_PST='LEGRO048.PST'
+
+FILES(4)%FILE_CUL='PNGRO048.CUL'
+FILES(4)%FILE_SPE='PNGRO048.SPE'
+FILES(4)%FILE_ECO='PNGRO048.ECO'
+FILES(4)%FILE_PST='PNGRO048.PST'
+
+FILES(5)%FILE_CUL='COGRO048.CUL'
+FILES(5)%FILE_SPE='COGRO048.SPE'
+FILES(5)%FILE_ECO='COGRO048.ECO'
+FILES(5)%FILE_PST='COGRO048.PST'
+
+FILES(6)%FILE_CUL='SUGRO048.CUL'
+FILES(6)%FILE_SPE='SUGRO048.SPE'
+FILES(6)%FILE_ECO='SUGRO048.ECO'
+FILES(6)%FILE_PST='SUGRO048.PST'
+
+FILES(7)%FILE_CUL='CNGRO048.CUL'
+FILES(7)%FILE_SPE='CNGRO048.SPE'
+FILES(7)%FILE_ECO='CNGRO048.ECO'
+FILES(7)%FILE_PST='CNGRO048.PST'
+
+FILES(8)%FILE_CUL='GBGRO048.CUL'
+FILES(8)%FILE_SPE='GBGRO048.SPE'
+FILES(8)%FILE_ECO='GBGRO048.ECO'
+FILES(8)%FILE_PST='GBGRO048.PST'
+
+FILES(9)%FILE_CUL='PRGRO048.CUL'
+FILES(9)%FILE_SPE='PRGRO048.SPE'
+FILES(9)%FILE_ECO='PRGRO048.ECO'
+FILES(9)%FILE_PST='PRGRO048.PST'
+
+FILES(10)%FILE_CUL='TOGRO048.CUL'
+FILES(10)%FILE_SPE='TOGRO048.SPE'
+FILES(10)%FILE_ECO='TOGRO048.ECO'
+FILES(10)%FILE_PST='TOGRO048.PST'
+
+RETURN
+END SUBROUTINE interface_FILE
+
+
+SUBROUTINE interface_RootSoilVol(PLANTS,PlantPop,ROWSPC)
+IMPLICIT NONE
+REAL::PLANTS,PlantPop,ROWSPC
+!interface_ihru=ihru
+PLANTS=9
+PlantPop=9
+ROWSPC=91
+RETURN
+END SUBROUTINE interface_RootSoilVol
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_IPPEST(FILET,PATHEX,FILEP,PATHPE,TRTNUM,CROP,PHTHRS8)
+IMPLICIT NONE
+CHARACTER(len=12)::FILEP,FILET
+CHARACTER(len=80)::PATHPE,PATHEX
+CHARACTER(len=2)::CROP
+INTEGER::TRTNUM
+REAL::PHTHRS8
+!interface_ihru=ihru
+CROP=CONTROL_NEW(interface_ihru)%CROP
+FILEP=TRIM(CROP)//TRIM('GRO048.PST')
+PHTHRS8=7		
+
+
+RETURN
+END SUBROUTINE interface_IPPEST
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_PODS(ECONO,WTPSD,SFDUR,SDPDVR,PODUR,THRESH)
+IMPLICIT NONE
+CHARACTER(len=6)::ECONO
+REAL::WTPSD,SFDUR,SDPDVR,THRESH,PODUR
+!interface_ihru=ihru
+
+ECONO=P_GROWTH(interface_ihru)%ECONO
+WTPSD=0.18  !Cultivar file
+SFDUR=24    ! Cultivar file
+!SDPDVR=?   ! Seed per pod for cultivar (#/pod)
+PODUR=10 ! Cultivar file
+THRESH=70 ! Cultivar file
+SDPDVR=27
+RETURN
+END SUBROUTINE interface_PODS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_mapping(CROP_in,CROP_out,RETYPE,FILE_ID)
+IMPLICIT NONE
+CHARACTER(len=4)::CROP_in
+CHARACTER(len=2)::CROP_out
+CHARACTER(len=5)::RETYPE
+CHARACTER(len=12)::FILE1,FILE2,FILE3,FILE4
+INTEGER,SAVE::number=0
+INTEGER::FILE_ID
+!interface_ihru=ihru
+FILE_ID=0
+SELECT CASE(CROP_IN)
+	CASE('SOYB')!1
+	CROP_out='SB'
+	RETYPE='RE106'
+	FILE_ID=1
+	CASE('CWPS')!2
+	CROP_out='CP'
+	RETYPE='RE102'
+	FILE_ID=2
+	CASE('LENT')!3
+	CROP_out='LE'
+	RETYPE='RE001'
+	FILE_ID=3
+	CASE('PNUT')!4
+	CROP_out='PN'
+	RETYPE='RE104'
+	FILE_ID=4
+	CASE('COTS','COTP')!5
+	CROP_out='CO'
+	FILE_ID=5
+	RETYPE='RE001'
+	CASE('SUNF')!6
+	CROP_out='SU'
+	RETYPE='RE001'
+	FILE_ID=6
+	CASE('CANP','CANA')!7
+	CROP_out='CN'
+	RETYPE='RE001'
+	FILE_ID=7
+	CASE('GRBN')!8
+	CROP_out='GB'
+	RETYPE='RE001'
+	FILE_ID=8
+	CASE('PEPR')!9
+	CROP_out='PR'
+	RETYPE='RE001'
+	FILE_ID=9
+	CASE('TOMA')!10
+	CROP_out='TM'
+	RETYPE='RE001'
+	FILE_ID=10
+	CASE('AGRR','AGRL','SGHY')
+	CROP_OUT='WA'
+	RETYPE='RE204'
+	CASE('AGRC','SWHT','WWHT','DWHT')
+	RETYPE='RE205'
+	CASE('RYE')
+	CROP_OUT='WA'
+	RETYPE='RE208'
+	CASE('BARL')
+	CROP_OUT='WA'
+	RETYPE='RE206'
+	CASE('RICE')
+	CROP_OUT='WA'
+	RETYPE='RE207'
+	CASE('PMIL')
+	CROP_OUT='WA'
+	RETYPE='RE202'
+	CASE('RYEG')
+	CROP_OUT='WA'
+	RETYPE='RE301'
+	CASE DEFAULT
+	CROP_out='WA'
+	RETYPE='RE001'
+
+END SELECT 
+
+!write(*,*)'Crop in=',CROP_IN,'Crop out=',CROP_out
+!! Generic
+!1 AGRL ! Agricultural generic, used Grain Sorghum info
+!2 AGRR ! Agricultural generic- Row crops, used valueas of Corn
+!3 AGRC ! Agricultural generic, Close grown, used value of Winter wheat
+!!Spesific
+!19 CORN
+!20 CSIL ! Corn silage
+!21 SCRN ! Sweet CORN
+!23 GRSG ! Grain sorghum
+!24 SGHY ! Sorghum hay
+!27 SWHT ! Spring wheat
+!28 WWHT ! Winter Wheat
+!29 DWHT ! Durum Wheat
+!130   RYE ! RYE
+!131 BARL ! Spring Barley
+!32 OATS	! OATS
+!33 Rice ! RICE
+!34 PMIL ! Pear MIllet
+!44 RYEG ! Italian ryegrass
+!54 CLVR ! Red clover
+!SB 56 SOYB ! Soybean
+!CP 57 CWPS ! Cowpeas
+!58 MUNG ! Mung peas
+!59 LIMA ! LIMA BEANS
+!LE 60 LENT ! Lentils
+!PN 61 PNUT ! peanut
+!62 FPEA ! Field peas
+!63 PEAS ! Garden or canning peas
+!64 SESB ! Sesbania
+!65 FLAX ! Flax
+!CO 66 COTS ! Upland cotton  harvested by Stripper
+!CO 67 COTP!  Upland cotton	 harvested by Picker
+!68 TOBC ! Tobacco
+!69 SGBT ! Sugarbeet
+!70 POTA ! Potato
+!71 SPOT ! Sweet potato
+!72 CRRT ! Carrot
+!73 ONIO ! Onion
+!SU 74 SUNF ! Sunflower
+!CN 75 CANP !Spring canola Polish
+!CN 76 CANA ! Spring canola Arg
+!78 BROC ! Broccoli
+!80 CAUF !Cauliflower
+!82 LETT ! Head Lettuce
+!83 SPIN ! Spinach
+!GB 84 GRBN ! Green beans
+!85 CUCM ! CUCUMBER
+!86 EGGP ! Eggplant 
+!87 CANT !Cantaloupe
+!88 HMEL !Honeydew melon
+!89 WMEL ! Water melon
+!PR 90 PEPR ! Bell pepper
+!TM 92 TOMA ! Tomato
+
+END SUBROUTINE interface_mapping
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+SUBROUTINE interface_SWAT_MGM
+! Scheduled fertilization	
+USE parm
+USE ModuleDefs
+IMPLICIT NONE
+INTEGER::it
+interface_ihru=ihru
+	it=iafrttyp(interface_ihru)
+	SELECT CASE(planting_DSSAT(interface_ihru))
+
+	CASE(3)
+      		Fert_NEW(interface_ihru) % ADDFUREA= cfrt_kg(interface_ihru)*(1-afrt_surface(interface_ihru))
+      		Fert_NEW(interface_ihru) % ADDOXU  = cfrt_kg(interface_ihru)*afrt_surface(interface_ihru)
+      		Fert_NEW(interface_ihru) % ADDOXH4 = (afrt_surface(interface_ihru))*cfrt_kg(interface_ihru) *  fnh3n(it) * fminn(it)      
+      		Fert_NEW(interface_ihru) % ADDOXN3 = (afrt_surface(interface_ihru))*cfrt_kg(interface_ihru) *   (1. - fnh3n(it)) * fminn(it)
+      		Fert_NEW(interface_ihru) % ADDSNH4 =(1-afrt_surface(interface_ihru))*cfrt_kg(interface_ihru) *  fnh3n(it) * fminn(it)      
+      		Fert_NEW(interface_ihru) % ADDSNO3 = (1-afrt_surface(interface_ihru))*cfrt_kg(interface_ihru)*(1. - fnh3n(it)) * fminn(it)
+      		Fert_NEW(interface_ihru) % ADDUREA = cfrt_kg(interface_ihru)*(1-afrt_surface(interface_ihru))
+      		Fert_NEW(interface_ihru) % ADDSPi  = (1-afrt_surface(interface_ihru))*cfrt_kg(interface_ihru)*fminp(it)
+      		Fert_NEW(interface_ihru) % ADDSKi  =0.0
+      		Fert_NEW(interface_ihru) % AMTFER  =   Fert_NEW(interface_ihru) % AMTFER +fminn(it)
+      		Fert_NEW(interface_ihru) % AppType = 'UNIFORM'
+      		Fert_NEW(interface_ihru) % FERTDAY = iyr*1000+iida
+      		Fert_NEW(interface_ihru) % FERDEPTH= 10.0 ! Constant in a SWAT
+      		Fert_NEW(interface_ihru) % FERTYPE = 3
+      		Fert_NEW(interface_ihru) % NAPFER  = Fert_NEW(interface_ihru) % NAPFER+1
+      		Fert_NEW(interface_ihru) % UNINCO  = .FALSE.
+      		Fert_NEW(interface_ihru) % FERMIXPERC = 0
+	END SELECT 
+
+
+return 
+END SUBROUTINE interface_SWAT_mgm
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_MGMTOPS(SW,ISWITCH,CONTROL,YREND,FERTDATA,HARVFRAC,IRRAMT_DSSAT,MDATE,OMADATA,TILLVALS,YRPLT,PLANTING_DSSAT2)
+
+! Management routine from DSSAT side
+USE ModuleDefs
+USE parm
+USE FertType_mod
+USE FloodModule
+IMPLICIT NONE
+INTEGER::YREND,YRPLT,MDATE,f,PLANTING_DSSAT2
+REAL::IRRAMT_DSSAT,SW(NL)
+REAL,DIMENSION(2)::HARVFRAC
+LOGICAL::UNINCO
+LOGICAL,SAVE::FIRST=.TRUE.
+INTEGER::DYNAMIC,FDAY(NAPPL),FERTDAY,add_year,koko(2)
+INTEGER::YRDNIT,NSR,NLAYR,NAPFER(NELEM),FTYPEN,FERTYPE
+CHARACTER(len=2) FERTYPEN
+CHARACTER(len=5)FERMET(NAPPL),FERTYPE_CDE(NAPPL)
+REAL::SOILNX,SOILNC,FERDEP(NAPPL),FLOOD,DSOILN,FERDEPTH
+REAL::DS(NL),DLAYR(NL),ADDUREA(NL),ADDSPi(NL),FERMIXPERC
+REAL::APFER(NAPPL),ANFER(NAPPL),AKFER(NAPPL)
+REAL::ADDSNO3(NL),ADDSNH4(NL),ADDSKi(NL),ADDOXU,ADDOXN3,ADDOXH4
+!
+INTEGER::YRDOY
+REAL::IRRAPL,AIRAMT,ATHETA,DSOIL
+CHARACTER(len=7)::AppType
+REAL:: ADDFNO3,ADDFNH4,AMTFER(NELEM),ADDFUREA
+REAL::DUL(NL),LL(NL),SWDEF,THETAC,THETAU
+CHARACTER(len=1) IIRRI
+INTEGER::NofO
+REAL::eff
+!REAL:: AMTFER(NAPPL),ADDFUREA
+TYPE(FertType) FERTDATA
+TYPE(OrgMAtAppType) OMAdata
+TYPE(TillType) TILLVALS
+TYPE(ControlType) CONTROL
+TYPE(SwitchType) ISWITCH
+TYPE(FloodWatType) FLOODWAT
+
+!write(*,*)'interface_MGM,PLANTING_DSSAT=',PLANTING_DSSAT2,PLANT_SOURCE(interface_ihru),PLANTING_DSSAT(interface_ihru)
+interface_ihru=ihru
+CALL GET(Plant_Interface)
+P_GROWTH(interface_ihru)=Plant_Interface
+NofO=nop(interface_ihru)
+
+
+!IF(PLANTING_DSSAT2==0.AND.PLANTING_DSSAT(ihru)>0)
+
+!Amount of irrigation
+AIRAMT=100
+DSOIL=1
+THETAC=50.0
+THETAU=100.00
+!write(*,*)'Interface mangement options'
+IF(PLANT_SOURCE(interface_ihru).EQ.'DSAT')THEN
+	IF(PLANTING_DSSAT(interface_ihru)==0)THEN
+	PLANTING_DSSAT(interface_ihru)=PLANTING_DSSAT2
+	END IF
+IF(interface_ihru==4)THEN
+	write(*,*)'In interface2,PLANTING_DSSAT=',PLANTING_DSSAT(interface_ihru),'ihru=',interface_ihru
+IF(DYNAMIC.EQ.RATE)THEN
+STOP
+END IF
+END IF
+END IF
+DYNAMIC=CONTROL%DYNAMIC
+DUL=SOILPROP_NEW(interface_ihru)%DUL
+LL=SOILPROP_NEW(interface_ihru)%LL
+YRDOY=CONTROL%YRDOY
+!write(*,*)'INTERFACE2, YRDOY=',YRDOY
+
+!YREND Date for end of season usually harvest date
+! FERTDATA
+!
+!APPTYPE = (UNIFORM,BANDED,HILL) (CHAR7)
+!FERTDATE,FERTYPE
+!NAPFER (NELEM) ! Current number of fert application applied
+!ADDFNH4 ! Rate of change of ammonium in floodwater (kg [N] / ha / d)
+!ADDFNO3 ! Rate of change of nitrate in floodwater (kg [N] / ha / d)
+!ADDFUREA ! Rate of change of urea in floodwater (kg [N] / ha / d)
+!ADDOXU   !  Rate of change of urea in oxidation layer (kg [N] / ha / d) 
+!ADDOXH4  ! Rate of change of ammonium in oxidation layer
+!ADDOXN3 ! Rate of change of nitrate in oxidation layer
+!FERDEPTH Fertilizer depth on current day of simulation (cm)
+!FERMIXPERC ! 0
+!AMTFER  !Cumulative amount of N in fertilizer applications
+!ADDSNH4 !Rate of change of ammonium in soil layer L (kg [N] / ha / d)
+!ADDSNO3 !Rate of change of nitrate in soil layer L (kg [N] / ha / d)
+!ADDUREA !Rate of change of urea content in soil layer L
+!ADDSpi  !Inorganic P fertilizer added today to soil layer L
+!ADDSki (NL) 
+!UNINCO (LOG)Logical variable indicating whether fertilizer is fully incorporated; if true, ignore oxidation layer	
+!FERTDATA%FERTDATE=
+!FERTDATA%FERTYPE=
+
+IF(DYNAMIC.EQ.SEASINIT)THEN
+
+
+	IF (FIRST) THEN
+        	CALL FertTypeRead(CONTROL)
+        	FIRST = .FALSE.
+      	ENDIF		
+
+
+	IIRRI=ISWITCH%IIRRI
+	write(*,*)'Int,NofO=',NofO
+	IF(mgt_ops(NofO,interface_ihru)==11)THEN
+		ISWITCH%IFERI='A'
+	ELSE
+		IF(mgt_ops(NofO,interface_ihru)==3)THEN
+			ISWITCH%IFERI='F'
+		END IF
+	END IF
+! Read from file
+!Fertilizer depth for automatic fertilizer option (cm)
+DSOILN=1.0
+!  Critical threshold of soil nitrogen content to trigger
+SOILNC=0
+!Amount of N to be applied for automatic fertilization
+SOILNX=1
+!See Fert_Place.for Integer 1-26
+FERTYPEN='4'
+FTYPEN=4
+!Julian date for Ith fertilizer application (YYYYDDD)
+
+add_year=iyr
+koko=shape(idop)
+!write(*,*)'IOPERA=',iopera,koko
+IF(koko(1).GT.1)THEN
+f=1
+do I=1,koko(1)-1
+!   write(*,*)'Operation id=',mgtop(I,interface_ihru)
+
+	IF(idop(I,interface_ihru).LT.idop(I+1,interface_ihru))THEN
+	!write(*,*)'Operation id=',mgtop(I,interface_ihru)
+	IF(mgtop(I,interface_ihru).EQ.3)THEN
+		FDAY(f)=add_year*1000+idop(I,interface_ihru)
+		f=f+1
+	END IF
+	ELSE
+		IF(mgtop(I,interface_ihru).EQ.3)THEN
+		FDAY(f)=add_year*1000+idop(I,interface_ihru)
+		end if
+		add_year=add_year+1
+		
+	END IF
+end do
+ELSE
+  FDAY(1)=add_year*1000+idop(1,interface_ihru)
+
+
+END IF
+!write(*,*)'Current year=',iyr
+!write(*,*)'idop(:,100)=',idop(:,100)
+!FDAY=1988250 ! All of them GET FROM SWAT
+
+FERTYPE_CDE='   04'
+!Fertilizer method for Ith application
+FERMET='04' 
+!Fertilizer depth for application I (cm)
+FERDEP=1
+!Amount of nitrogen in fertilizer applied in Ith application
+ANFER=10.0   ! Coming from SWAT
+APFER=10.0
+AKFER=10.0
+!NFERT=
+
+AMTFER=1
+NAPFER=1
+YRDNIT=1
+UNINCO=.FALSE.
+ADDFUREA=1.0
+ADDFNH4  = 1.0
+ADDFNO3  = 1.0
+
+ADDOXU   = 1.0
+ADDOXH4  = 1.0
+ADDOXN3  = 1.0
+
+ADDSNH4  = 1.0
+ADDSNO3  = 1.0
+ADDUREA  = 1.0
+
+ADDSPi   = 1.0
+ADDSKi   = 1.0
+
+DO I = 1, NSlowRelN     !max # that can be applied
+	SlowRelN(I) % ACTIVE = .FALSE.
+ENDDO
+NSR = 1                 !actual # applied in this simulation
+
+UIDATA % UIEND = 0
+NIDATA % NIEND = 0
+NActiveSR = 0
+FERTYPE=3
+
+      FertData % ADDFUREA= ADDFUREA
+      FertData % ADDFNH4 = ADDFNH4
+      FertData % ADDFNO3 = ADDFNO3
+
+      FertData % ADDOXU  = ADDOXU
+      FertData % ADDOXH4 = ADDOXH4
+      FertData % ADDOXN3 = ADDOXN3
+
+      FertData % ADDSNH4 = ADDSNH4
+      FertData % ADDSNO3 = ADDSNO3
+      FertData % ADDUREA = ADDUREA
+
+      FertData % ADDSPi  = ADDSPi
+      FertData % ADDSKi  = ADDSKi
+
+      FertData % AMTFER  = AMTFER
+      FertData % AppType = AppType
+      FertData % FERTDAY = FERTDAY
+      FertData % FERDEPTH= FERDEPTH
+      FertData % FERTYPE = FERTYPE
+      FertData % NAPFER  = NAPFER
+      FertData % UNINCO  = UNINCO
+      FertData % FERMIXPERC = FERMIXPERC
+      FertData%APPTYPE='UNIFORM'		
+	FERT_NEW(interface_ihru)=FertData
+	ToSwat_NEW(interface_ihru)%Fert_Data=FertData
+ELSE IF(DYNAMIC.EQ.RATE)THEN
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	IF(PLANTING_DSSAT2>0.OR.PLANTING_DSSAT(interface_ihru)>0)THEN
+	write(*,*)'MANGEMENT,RATE,STOP',PLANTING_DSSAT2,PLANTING_DSSAT(interface_ihru)
+	!STOP
+	END IF
+	!write(*,*)'interface_MGM,PLANTING_DSSAT=',PLANTING_DSSAT(interface_ihru)
+!	write(*,*)'INSIDE interface_mgm,ihru=',interface_ihru,'ID_P=',PLANTING_DSSAT2
+	IF(PLANTING_DSSAT2==0.AND.PLANTING_DSSAT(interface_ihru)==0)RETURN
+
+ !       write(*,*)'INSIDE interface_mgm,ihru=',interface_ihru,'ID_P=',PLANTING_DSSAT2
+!	write(*,*)'PLANTING_DSSAT=',PLANTING_DSSAT(interface_ihru),PLANT_SOURCE(interface_ihru)
+
+	SELECT CASE(PLANTING_DSSAT(interface_ihru))
+	CASE(11)
+	!write(*,*)'interface_MGM, Plant source',PLANT_SOURCE(interface_ihru)
+		CALL interface_anfert('DSAT')
+	        FERTDATA=FERT_NEW(interface_ihru)
+        PLANTING_DSSAT(interface_ihru)=0
+	
+	CASE(5)
+	! 5 Harvest and kill
+	YREND=iida
+	!write(*,*)'INTERFACE_MGM'
+	!STOP
+	eff=maxval((/harveff,frac_harvk,hi_ovr/))
+	HARVFRAC=(/eff,0.0/)
+	PLANTING_DSSAT(interface_ihru)=0
+	yldkg(icr(interface_ihru),interface_ihru)=Plant_Interface%TOPWT*10+yldkg(icr(interface_ihru),interface_ihru)
+	yldanu(interface_ihru)=yldanu(interface_ihru)+Plant_Interface%TOPWT*10/1000
+
+	IF(PLANT_SOURCE(interface_ihru).EQ.'SWAT')THEN
+
+		hiad1 = 0.
+      		if (hi_targ(j) > 0.) then
+        		hiad1 = hi_targ(j)
+      		else
+        		if (plt_pet(j) < 10.) then
+          			wur = 100.
+        		else
+         			 wur = 0.
+         	 		 wur = 100. * plt_et(j) / plt_pet(j)
+        		endif
+        		hiad1 = (hvstiadj(j) - wsyf(idplt(j)))*(wur / (wur + Exp(6.13 - .0883 * wur)))+wsyf(idplt(j))
+
+        		if (hiad1 > hvsti(idplt(j))) then 
+          			hiad1 = hvsti(idplt(j))
+        		end if
+      		end if
+
+		!! check if yield is from above or below ground
+      		yield = 0.
+      		resnew = 0.
+      		rtresnew = 0.
+
+		!! stover fraction during harvkillop
+      		xx = frac_harvk
+      		if (xx .lt. 1.e-6) then
+        		xx = hi_ovr                      
+      		endif
+		!! stover fraction during harvkillop
+      		if (hi_ovr > 1.e-6) then
+        		yield = bio_ms(j) * hi_ovr
+        		resnew = bio_ms(j) - yield
+      		else
+      			if (idc(idplt(j)) == 7) then
+        			yield = bio_ms(j) * (1. - bio_leaf(idplt(j)))
+        			resnew = bio_ms(j) - yield
+      			else
+        			if (hvsti(idplt(j)) > 1.001) then
+         		 		yield = bio_ms(j) * (1. - 1. / (1. + hiad1))
+          				resnew = bio_ms(j) / (1. + hiad1)
+          				resnew = resnew * (1. - xx)
+        			else
+          				yield = (1. - rwt(j)) * bio_ms(j) * hiad1
+          				resnew = (1. - rwt(j)) * (1. - hiad1) * bio_ms(j)
+          				!! remove stover during harvkillop
+          				resnew = resnew * (1. - xx)
+          				rtresnew = rwt(j) * bio_ms(j)	
+        			endif
+      			endif
+     		end if 
+      
+      		if (yield < 0.) yield = 0.
+      		if (resnew < 0.) resnew = 0.
+		if (rtresnew < 0.) rtresnew = 0.	
+
+		!! calculate nutrients removed with yield
+      		yieldn = 0.
+      		yieldp = 0.
+      		yieldn = yield * cnyld(idplt(j))
+      		yieldp = yield * cpyld(idplt(j))
+      		yieldn = Min(yieldn, 0.80 * plantn(j))
+      		yieldp = Min(yieldp, 0.80 * plantp(j))
+		call rootfr
+
+
+		!! fraction of N, P in residue (ff1) or roots (ff2)
+		ff1 = (1 - hiad1) / (1 - hiad1 + rwt(j))
+		ff2 = 1 - ff1
+		BLG1 = 0.01/0.10
+                BLG2 = 0.99
+                BLG3 = 0.10
+                XX = log(0.5/BLG1-0.5)
+                BLG2 = (XX -log(1./BLG2-1.))/(1.-0.5)
+                BLG1 = XX + 0.5*BLG2
+
+		CLG=BLG3*phuacc(j)/(phuacc(j)+EXP(BLG1-BLG2*phuacc(j)))
+		RLR = MIN(.8, resnew * CLG/(resnew+1.E-5))
+		RLR*resnew ! New ligning
+		
+		!! update residue, N, P on soil surface
+	!sol_rsd(1,j) = resnew + sol_rsd(1,j)
+	!sol_fon(1,j) = sol_fon(1,j) + FF1 * (plantn(j) - yieldn)
+      	!sol_fop(1,j) = sol_fop(1,j) + FF1 * (plantp(j) - yieldp) 
+      	!sol_rsd(1,j) = Max(sol_rsd(1,j),0.)
+	!!sol_fon(1,j) = Max(sol_fon(1,j),0.)
+	!sol_fop(1,j) = Max(sol_fop(1,j),0.)
+
+
+	
+
+	ELSE
+
+	END IF
+
+	ORG_RESIDUE(interface_ihru)%NAPRes=ORG_RESIDUE(interface_ihru)%NAPRes)+1
+	ORG_RESIDUE(interface_ihru)%RESDAT=iida
+	ORG_RESIDUE(interface_ihru)%RESDEPTH=0.0
+	ORG_RESIDUE(interface_ihru)%RESTYPE=1 ! Crop Residue
+	ORG_RESIDUE(interface_ihru)%ResMixPerc=0.0
+	ORG_RESIDUE(interface_ihru)%ResWt(0)=ORG_RESIDUE(interface_ihru)%ResWt(0)+resnew
+	DO I=1,NLAYR
+		ORG_RESIDUE(interface_ihru)%ResWt(I)=ORG_RESIDUE(interface_ihru)%ResWt(I)+rtfr(I)*rtresnew
+		ORG_RESIDUE(interface_ihru)%ResE(I,N)=ORG_RESIDUE(interface_ihru)%ResE(I,N)+FF1*(plantn(j)-yieldn)
+
+	END DO
+      !OMAData % NAPRes     = NAPRes
+      !OMAData % RESDAT     = RESDAT
+      !OMAData % ResDepth   = RESDEPTH
+      !OMAData % ResTYPE    = RESTYPE
+      !OMAData % ResMixPerc = ResMixPerc
+
+      !OMAData % ResWt = ResWt
+      !OMAData % ResE  = ResE
+      !OMAData % ResLig= ResLig
+
+      !OMAData % CumResWt   = CumResWt
+      !OMAData % CumResE(N) = CumResE(N)
+      !OMAData % CumResE(P) = CumResE(P)
+
+	CASE(8) 
+	! 8 Kill operation
+	YREND=iida
+	eff=maxval((/harveff,frac_harvk,hi_ovr/))
+        HARVFRAC=(/0.0,0.0/)
+        !yldkg(icr(interface_ihru),interface_ihru)=Plant_Interface%TOPWT*10+yldkg(icr(interface_ihru),interface_ihru)
+
+
+	PLANTING_DSSAT(interface_ihru)=0
+	CASE(7)
+	! 7 harvest only
+	YREND=iida
+		eff=maxval((/harveff,frac_harvk,hi_ovr/))
+        HARVFRAC=(/eff,0.0/)
+        yldkg(icr(interface_ihru),interface_ihru)=Plant_Interface%TOPWT*10+yldkg(icr(interface_ihru),interface_ihru)
+	yldanu(interface_ihru)=yldanu(interface_ihru)+Plant_Interface%TOPWT*10/1000
+
+	PLANTING_DSSAT(interface_ihru)=0
+	CASE(1)
+	! Planting a crop
+	YRPLT=iyr*1000+iida
+	PLANTING_DSSAT(interface_ihru)=0
+
+	CASE(3)
+	! Fertilizer operation happens by a given day
+	CALL interface_anfert('DSAT')
+	FERTDATA=FERT_NEW(interface_ihru)
+	PLANTING_DSSAT(interface_ihru)=0
+	CASE(110)
+	write(*,*)'ANFERT FROM SWAT SIDE'
+	STOP
+	CASE(2000)
+	!IRRIGATION:
+        strsw(interface_ihru)=P_GROWTH(interface_ihru)%TURFAC
+        irramt_dssat=irramt(interface_ihru)
+
+
+	END SELECT
+	
+	IIRRI='A'
+	IRRAPL=0.0
+	!FERTDATA=FERT_NEW(interface_ihru)
+	DLAYR=SOILPROP_NEW(interface_ihru)%DLAYR
+	
+	DS=SOILPROP_NEW(interface_ihru)%DS
+	NLAYR=SOILPROP_NEW(interface_ihru)%NLAYR
+	FLOOD=FLOODWAT%FLOOD
+	!if(interface_ihru==1)then
+	!write(*,*)'Interface, planting dssat:',PLANTING_DSSAT(interface_ihru)
+
+	!end if
+
+	!IF(PLANTING_DSSAT(interface_ihru)==1)THEN
+!		! Planting of crop
+!		YRPLT=iyr*1000+iida
+!		
+!	ELSE IF(PLANTING_DSSAT(interface_ihru)==3)THEN
+!		! Ferlilizer operation happens by a given day 
+!		
+!		CALL interface_anfert('DSAT')
+!		FERTDATA=FERT_NEW(interface_ihru)
+!		! FERTDAY
+!		!ADDSNO3 Rate of change of nitrate in soil layer L (kg [N] / ha / d)!
+!		!ADDSNH4 Rate of change of ammonium in soil layer L (kg [N] / ha / d)
+!		!ADDUREA Rate of change of urea content in soil layer L
+!		!ADDFNH4 Rate of change of ammonium in floodwater (kg [N] / ha / d)
+!		!ADDFNO3 Rate of change of nitrate in floodwater (kg [N] / ha / d)
+!		!AFFFUREA Rate of change of urea in floodwater (kg [N] / ha / d)
+!		!ADDSpi Inorganic P fertilizer added today to soil layer L
+!
+!		!ADDOXH4 Rate of change of ammonium in oxidation layer
+!		!ADDOXN3 Rate of change of nitrate in oxidation layer (kg [N] / ha / d)
+!		!ADDOXU  Rate of change of urea in oxidation layer (kg [N] / ha / d)
+!		!FERTYPE Fertilizer type for current application
+!		!UNINCO Logical variable indicating whether fertilizer is fully 
+!!              incorporated; if true, ignore oxidation layer
+!
+!
+!	ELSE IF(PLANTING_DSSAT(interface_ihru)==2000)THEN
+!!	!IRRIGATION
+!	strsw(interface_ihru)=P_GROWTH(interface_ihru)%TURFAC
+!	irramt_dssat=irramt(interface_ihru)
+!	
+!	END IF
+!	CALL Fert_Place(CONTROL,ISWITCH,DLAYR,DS,FLOOD,NLAYR,YRPLT,FERTDATA)
+
+!	IF ((YRDOY .GE. YRPLT .AND. YRDOY .LE. MDATE ).OR.(YRDOY .GE. YRPLT .AND. MDATE .LE.  -99)) THEN
+
+
+!	!Soil water content determins demand
+!	CALL SWDEFICIT(DSOIL, DLAYR, DUL, LL, NLAYR, SW, THETAU,ATHETA, SWDEF)                              !Output!
+!	IF (ATHETA .LE. THETAC*0.01) THEN
+!!           A soil water deficit exists - automatic irrigation today.
+		
+ !           IF (IIRRI .EQ. 'A') THEN
+!C             Determine supplemental irrigation amount.
+!C             Compensate for expected water loss due to soil evaporation
+!C             and transpiration today.
+!C             Estimate that an average of 5 mm of water will be lost.
+!              IRRAPL = SWDEF*10 + 0.1
+ !             IRRAPL = MAX(0.,IRRAPL)
+!		!if(interface_ihru==1)WRITE(*,*)'interface2:automatic IRRIGATION,IRRAPL=',IRRAPL
+	
+ !           ELSE IF (IIRRI .EQ. 'F') THEN
+!!C             Apply fixed irrigation amount
+!              IRRAPL = AIRAMT
+!            ENDIF
+
+ !         ENDIF
+!	IRRAMT_DSSAT=IRRAPL
+!	END IF
+END IF
+!write(*,*)'From interface_mgm'
+
+RETURN
+END SUBROUTINE interface_MGMTOPS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_IPGROW(CROP,PLTPOP,PLME,ROWSPC,SDWTPL,ECONO,WTPSD,SDPRO,SDLIP)
+USE ModuleDefs
+IMPLICIT NONE
+CHARACTER(len=2)::CROP
+CHARACTER(len=1)::PLME
+CHARACTER(len=6)::ECONO
+REAL::PLTPOP,ROWSPC,SDWTPL,WTPSD,SDPRO,SDLIP
+Type(ControlType) CONTROL
+!interface_ihru=ihru
+! PLTPOP Plant population plants/m2
+! PLME Planting method code (T=transplant,S=seed,P=pre germinated seed,N=nursery,R=ratooning for sugarcane,C,H,V,I,B)
+! ROWSPC Row spacing (m)
+! SDWTPL Initial planting material dry weight kg/ha
+! ECONO 
+! WTPSD MAximum weight per seed gram
+! SDPRO Fration proteins in seed g(protein)/g(seed)
+! SDLIP Fraction oil in seed  g(oil)/g(seed)
+CALL GET(CONTROL)
+ECONO=P_GROWTH(interface_ihru)%ECONO
+CROP=CONTROL_NEW(interface_ihru)%CROP
+PLME='S'
+PLTPOP=9
+ROWSPC=91
+WTPSD=0.180
+SDPRO=0.153
+SDLIP=0.12
+SDWTPL=PLTPOP*10000*WTPSD/1000
+!WRITE(*,*)'interface_ipgrow, crop=',crop,'interface_ihru=',interface_ihru
+RETURN
+END SUBROUTINE interface_IPGROW
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_SoilPi_init(PiActive,PiStable,PiLabile,rate1,rate2,rate3,rate4)
+USE parm
+IMPLICIT NONE
+REAL::PiActive(1:NL),PiStable(1:NL),PILabile(1:NL)
+REAL::rate1(1:NL),rate2(1:NL),rate3(1:NL),rate4(1:NL)
+interface_ihru=ihru
+PiActive=sol_actp(1:sol_nly(interface_ihru),interface_ihru)
+PiStable=sol_stap(1:sol_nly(interface_ihru),interface_ihru)
+PiLabile=PiActive*psp_store(1:sol_nly(interface_ihru),interface_ihru)/(1.0-psp_store(1:sol_nly(interface_ihru),interface_ihru))
+
+rate1=0.03*(psp_store(1:sol_nly(interface_ihru),interface_ihru)/(1.0-psp_store(1:sol_nly(interface_ihru),interface_ihru)))**0.5
+rate2=rate1(1:sol_nly(interface_ihru))/3*psp_store(1:sol_nly(interface_ihru),interface_ihru)
+rate3=EXP(-1.77*psp_store(1:sol_nly(interface_ihru),interface_ihru)-7.05)
+rate4=0.0001
+RETURN
+END SUBROUTINE interface_SoilPi_init
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_somfrac_init(FldHist,FHDur_real)
+IMPLICIT NONE
+CHARACTER(LEN=5)::FldHist
+REAL::FHDur_real
+!interface_ihru=ihru
+FldHist='ERROR'
+FHDur_real=-99
+
+RETURN
+END SUBROUTINE interface_somfrac_init
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_sominit_c(PCR)
+IMPLICIT NONE
+CHARACTER(len=2)::PCR
+CHARACTER(len=5)::FldHist
+REAL::FHDur_real
+!interface_ihru=ihru
+PCR=OLD_CROP(interface_ihru)
+RETURN
+END SUBROUTINE interface_sominit_c
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_SoilNi_init(NO3,NH4)
+USE parm
+USE ModuleDefs
+IMPLICIT NONE
+REAL::NO3(1:NL),NH4(1:NL)
+REAL::kerros(1:NL)
+INTEGER::L
+!interface_ihru=ihru
+kerros(1)=sol_z(1,interface_ihru)
+DO L=2,NL
+	kerros(L)=sol_z(L,interface_ihru)-sol_z(L-1,interface_ihru)
+END DO
+kerros=kerros*0.001 ! mm > m
+
+!write(*,*)interface_ihru,'hru_ha=',hru_ha(interface_ihru)
+!if(hru_ha<1)THEN
+!write(*,*)'hru_ha=',hru_ha(interface_ihru)
+!STOP
+!END IF
+NO3=sol_no3(1:NL,interface_ihru) ! In SWAT kg/ha   N_SWAT*sub_ha*1000*1000 =>mg 
+ NH4=sol_nh3(1:NL,interface_ihru)
+
+!write(*,*)'DSSAT',NO3(1:2),NH4(1:2)
+
+ NO3=((NO3*hru_ha(interface_ihru))*1000*1000*1000) ! micro g
+ NH4=((NH4*hru_ha(interface_ihru))*1000*1000*1000) ! micro g
+!1 sub_ha =10000 m^2
+! sol_z= mm
+! solz*sub_ha =1000/10000 sol_z*sub_ha m^3 =10^-1 m^3 
+!Mg/m^3 =1000 kg/m^3
+
+!write(*,*)'DSSAT',NO3(1:2),NH4(1:2)
+NO3=(NO3/(hru_ha(interface_ihru)*10**4*kerros(:)*sol_bd(:,interface_ihru)*10**6))
+NH4=(NH4/(hru_ha(interface_ihru)*10**4*kerros(:)*sol_bd(:,interface_ihru)*10**6))
+!write(*,*)'KERROS=',kerros,'bd=',sol_bd(:,interface_ihru)
+!write(*,*)'NO3, Swat',sol_no3(1:2,interface_ihru),'DSSAT',NO3(1:2)
+!write(*,*)'ihru=',interface_ihru,'SOURCE=',PLANT_SOURCE(interface_ihru)
+!STOP
+!sub_ha
+
+!mg /[ha*100*mm/(kg/m^3)]
+
+!ha *10^4 mm/1000 =ha*mm*10=m^3 
+!10 ha*mm/(Mg/m^3)
+
+!kg/ha*ha*1000*1000 =>micro g /(Mg/m^3)
+RETURN
+END SUBROUTINE interface_SoilNi_init
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_CNPinit(PREV_CROP,ICRT,ICNOD,ICRES,ICREN,ICREP,ICRIP,ICRID )
+IMPLICIT NONE
+CHARACTER(len=2)::PREV_CROP
+REAL::ICRT,ICNOD,ICRES,ICREN,ICREP,ICRIP,ICRID
+!interface_ihru=ihru
+!ICRT =  Root weight from previous crop kg/ha
+!ICNOD = Initial mass of nodule residue in soil (left over)
+!ICRES = Initial surface residuw kg/ha
+!ICREN = N content of surface residue %
+!ICREP = P content of surface residue %
+!ICRIP = Incorporation amount for surface residue %
+!ICRID = Incorporation depth for surface residue cm
+
+
+
+RETURN
+END SUBROUTINE interface_CNPinit
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_DEMAND(ECONO,SLAVAR,SIZELF,XFRUIT,THRESH,SDPRO,SDLIP)
+USE ModuleDefs
+IMPLICIT NONE
+CHARACTER(len=6)::ECONO
+REAL::SLAVAR,SIZELF,XFRUIT,THRESH,SDPRO,SDLIP
+!interface_ihru=ihru
+ECONO=P_GROWTH(interface_ihru)%ECONO
+
+!SLAVAR Specific leaf area (SLA) for new leaves during peak vegetative
+!             growth for cultivar I, modified by environmental factor (cm2/g)
+!SIZELF  The size of a normal upper node leaf (nodes 8 - 10) used to
+!             adjust leaf area expansion during sink-limited phase of
+!             vegetative growth, i.e., prior to VSSINK nodes on the main stem
+!             (cm2/leaf)
+!XFRUIT  Maximum fraction of daily available gross photosynthate (PG)
+!             which is allowed to go to seeds plus shells, varies from 0 to
+!             1.0.
+! THRESH    The maximum ratio mass of seed to mass of seed plus shell at
+!             maturity.  Causes seed to stop growing as their dry weights
+!             increase until shells are filled in a cohort.
+!SDPRO Seed protein fraction at 25�C (g[protein] / g[seed])
+! SDLIP     Maximum lipid composition in seed (fraction)
+
+SLAVAR=170
+SIZELF=300
+XFRUIT=1!0.5
+THRESH=70
+SDPRO=0.153
+SDLIP=0.12
+RETURN
+END SUBROUTINE interface_DEMAND
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_IPIBS(CONTROL,ISWITCH,CROP,IDETS,MODEL)
+USE parm
+USE ModuleDefs
+IMPLICIT NONE
+
+TYPE(ControlType)::CONTROL
+TYPE(SwitchType)::ISWITCH
+CHARACTER(len=1)::IDETS
+CHARACTER(len=8)::MODEL
+CHARACTER(len=2)::CROP
+!interface_ihru=ihru
+!CONTROL=CONTROL_NEW(ihru)
+!ISWITCH=KYTKIN
+CROP=CONTROL%CROP
+MODEL=CONTROL%MODEL
+IDETS=ISWITCH%IDETS
+
+!IDETS='N'
+RETURN
+END SUBROUTINE interface_IPIBS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_Ipphenol(CROP,PLME,SDEPTH,SDAGE,ATEMP,ECONO,CSDVAR,PPSEN,PH2T5,HELP)
+IMPLICIT NONE
+CHARACTER(len=1)::PLME
+CHARACTER(len=6)::ECONO
+CHARACTER(len=2)::CROP
+REAL::SDEPTH,SDAGE,ATEMP,CSDVAR,PPSEN,PH2T5,HELP(4)
+!interface_ihru=ihru
+
+!SDAGE Transplant age (days)
+!SDEPTH Planting depth (cm)
+!PPSEN Sensitivity to photoperiod. Slope of the relative rate of the development for the day lengths above CSDVAR (1/hr)
+!PLME Planting method (T=Transplant,S=Seed,P=pre-germinated seed,N=nursery )
+!PH2T5 Time of end of juvenile phase to first flowering under optimal conditions (photothermal days)
+!ECONO Ecotype code -use dto match ECOTYP in .ECO file 
+!ATEMP Temperature of transplant temperature (degree)
+!CSDVAR Critical day length above which development rate decreases (prior to flowering )(hours)
+!CROP Crop identification code
+!HELP Treshold times that must be accumulate in phase (I) for the next stage to occur (thermal or photothermal day) [I=6,8,10,13]
+
+!ECONO='CO0001'
+ECONO=P_GROWTH(interface_ihru)%ECONO!'CAND01' !ninimum for lentils
+PLME='S'
+SDEPTH=1.25 !1.25-3.75
+PPSEN=0.01
+PH2T5=7
+CSDVAR=23
+! Also IPPLNT need ECONO and CROP
+HELP=(/7,7,7,7/)
+
+RETURN
+END SUBROUTINE interface_Ipphenol
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_INCOMP(SDPRO,SDLIP)
+IMPLICIT NONE
+REAL::SDPRO,SDLIP
+!interface_ihru=ihru
+!SDPRO Seed protein fraction at 25 degree (g (protein)/g(seed))
+!SDLIP MAximum lipid composition in seed (fraction)
+
+RETURN
+END SUBROUTINE interface_INCOMP
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_OPHARV(ISENS,TRTNUM,PLME)
+IMPLICIT NONE
+CHARACTER(len=1)::PLME
+INTEGER::ISENS,TRTNUM
+!interface_ihru=ihru
+PLME='S'
+RETURN
+END SUBROUTINE interface_OPHARV
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_OPSUM(EXPER,CG,ENAME,TRTNUM,ROTNO,ROTOPT,CRPNO,TITLET,CROP,FLDNAM,WSTATION,SLNO)
+IMPLICIT NONE
+CHARACTER(len=2)::CROP,CG
+CHARACTER(len=8)::EXPER,FLDNAM,WSTATION
+CHARACTER(len=10)::SLNO
+CHARACTER(len=25)::TITLET
+CHARACTER(len=60)::ENAME
+INTEGER::TRTNUM,ROTNO,ROTOPT,CRPNO
+RETURN
+END SUBROUTINE interface_OPSUM
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+SUBROUTINE interface_OPVIEW(ISENS,TRTNUM,TITLET,FILEA)
+IMPLICIT NONE
+CHARACTER(len=12)::FILEA
+CHARACTER(len=25)::TITLET
+INTEGER::ISENS,TRTNUM
+RETURN
+END SUBROUTINE interface_OPVIEW
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_PHOTOIP(ROWSPC,PHTHRS10,LMXSTD)
+IMPLICIT NONE
+REAL::ROWSPC,PHTHRS10,LMXSTD
+! ROW SPACING (meters)
+!PHTHRS10 Treshold time that must accumulate in phase 10 for the next stage to occur. Equivalence of PHTHRS(10)
+! LMXSTD Maximum leaf photosyntheses for standart cultivar
+ROWSPC=91
+LMXSTD=60
+PHTHRS10=7
+RETURN
+END SUBROUTINE interface_PHOTOIP
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!ISENS
+!TRTNUM
+
+
+SUBROUTINE interface_SOILPROP
+USE ModuleDefs
+USE ModuleData
+USE parm
+IMPLICIT NONE
+INTEGER::i_new
+!interface_ihru=ihru
+!write(*,*)'Interface, ihru=',ihru,'interface_ihru',interface_ihru
+! To initialize SOILPROB derived variable for each hru defined. 
+      SOILPROP_NEW(interface_ihru) % ADCOEF = 0
+      SOILPROP_NEW(interface_ihru) % BD     = SOL_BD(1:sol_nly(interface_ihru),interface_ihru)
+      SOILPROP_NEW(interface_ihru) % CACO3  = SOL_CAL(1:sol_nly(interface_ihru),ihru)
+      SOILPROP_NEW(interface_ihru) % CEC    = 0
+      SOILPROP_NEW(interface_ihru) % CLAY   = SOL_CLAY(1:sol_nly(interface_ihru),interface_ihru)
+      SOILPROP_NEW(interface_ihru) % CN     = cnday(interface_ihru)
+      SOILPROP_NEW(interface_ihru)%DLAYR(1)=sol_z(1,interface_ihru)/10.0
+	!if(interface_ihru==1332)write(*,*)sol_z(1,interface_ihru)
+	DO i_new=2,sol_nly(interface_ihru)
+	 SOILPROP_NEW(interface_ihru) % DLAYR(i_new)  =(sol_z(i_new,interface_ihru)-sol_z(i_new-1,interface_ihru))/10.0
+	!if(interface_ihru==1332)write(*,*)sol_z(i_new,interface_ihru),sol_z(i_new-1,interface_ihru)
+	END DO
+	!if(interface_ihru==1332)STOP
+      SOILPROP_NEW(interface_ihru) % DMOD   = 0        !formerly SLNF
+      SOILPROP_NEW(interface_ihru) % DS(1:sol_nly(interface_ihru))     =sol_z(1:sol_nly(interface_ihru),interface_ihru)/10.0
+      SOILPROP_NEW(interface_ihru) % DUL    = 0.4*SOL_CLAY(1:sol_nly(interface_ihru),interface_ihru)&
+*SOL_BD(1:sol_nly(interface_ihru),interface_ihru)/100&
+-SOL_AWC(1:sol_nly(interface_ihru),interface_ihru)
+      SOILPROP_NEW(interface_ihru) % ETDR   = 0.2     !tile drainage rate
+      SOILPROP_NEW(interface_ihru) % EXTP   = sol_solp(1:sol_nly(interface_ihru),ihru)
+      SOILPROP_NEW(interface_ihru) % KG2PPM = 0  !conversion factor
+      SOILPROP_NEW(interface_ihru) % LL     = 0.4*SOL_CLAY(1:interface_ihru,interface_ihru)&
+*SOL_BD(1:interface_ihru,interface_ihru)/100!
+!	write(*,*)'INTERFACE,sol_NLy=',sol_nly(interface_ihru)
+      SOILPROP_NEW(interface_ihru) % NLAYR  = sol_nly(interface_ihru)
+      SOILPROP_NEW(interface_ihru) % OC     = SOL_CBN(1:interface_ihru,interface_ihru)
+      SOILPROP_NEW(interface_ihru) % PH     = SOL_PH(1:interface_ihru,interface_ihru)
+      SOILPROP_NEW(interface_ihru) % PHKCL  = 0
+      SOILPROP_NEW(interface_ihru) % PTERMA = 0
+      SOILPROP_NEW(interface_ihru) % PTERMB = 0
+      SOILPROP_NEW(interface_ihru) % POROS  = 0
+!     SOILPROP % RGIMPF = RGIMPF  !Root growth impedance factor
+      SOILPROP_NEW(interface_ihru) % SALB   = SOL_ALB(interface_ihru)
+      SOILPROP_NEW(interface_ihru) % MSALB  = 0
+      SOILPROP_NEW(interface_ihru) % CMSALB = 0
+
+      SOILPROP_NEW(interface_ihru) % SAND   = SOL_SAND(1:interface_ihru,interface_ihru)
+      SOILPROP_NEW(interface_ihru) % SASC   = 0
+      SOILPROP_NEW(interface_ihru) % SAT    = 1.0-SOL_BD(1:interface_ihru,interface_ihru)/2.65
+      SOILPROP_NEW(interface_ihru) % SILT   = SOL_SILT(1:interface_ihru,interface_ihru)
+      SOILPROP_NEW(interface_ihru) % SLNO   = '-99' !READ from IO
+      SOILPROP_NEW(interface_ihru) % SLPF   = 1 ! 0-1 
+      SOILPROP_NEW(interface_ihru) % SMPX   = 'SA009' ! Method to measure phosporus EXTP Defined in SoilPi_init
+      SOILPROP_NEW(interface_ihru) % STONES = SOL_ROCK(1:interface_ihru,interface_ihru)
+      SOILPROP_NEW(interface_ihru) % SWCN   = 0
+      SOILPROP_NEW(interface_ihru) % SWCON  = 0
+      SOILPROP_NEW(interface_ihru) % TOTBAS = 0
+      SOILPROP_NEW(interface_ihru) % TEXTURE= '-99'
+      SOILPROP_NEW(interface_ihru) % TOTN   = 0
+      SOILPROP_NEW(interface_ihru) % TotOrgN= 0
+      SOILPROP_NEW(interface_ihru) % U      = 0
+      SOILPROP_NEW(interface_ihru)% WR     = 0.50      !SHF
+
+      SOILPROP_NEW(interface_ihru) % TOTP   = sol_solp(1:sol_nly(interface_ihru),interface_ihru)&
+	+sol_orgp(1:sol_nly(interface_ihru),interface_ihru)
+      SOILPROP_NEW(interface_ihru) % ORGP   = sol_orgp(1:sol_nly(interface_ihru),interface_ihru)
+      SOILPROP_NEW(interface_ihru) % EXCA   = 0
+      SOILPROP_NEW(interface_ihru) % EXNA   = 0
+      SOILPROP_NEW(interface_ihru) % EXK    = 0
+
+      SOILPROP_NEW(interface_ihru) % alphaVG= 0
+      SOILPROP_NEW(interface_ihru) % mVG    = 0
+      SOILPROP_NEW(interface_ihru) % nVG    = 0
+      SOILPROP_NEW(interface_ihru) % WCR    = 0   !residual water content
+!	write(*,*)'interface:',soil_texture(1:sol_nly(ihru),interface_ihru),'number of layers:',sol_nly(interface_ihru)
+      SOILPROP_NEW(interface_ihru) % SOILLAYERTYPE = soil_texture(1:sol_nly(interface_ihru),interface_ihru)
+      SOILPROP_NEW(interface_ihru) % LayerText     = '-99'
+      SOILPROP_NEW(interface_ihru) % SLDESC        = '-99' !Read from IO
+      SOILPROP_NEW(interface_ihru)% TAXON         = '-99' ! Read from IO
+
+      SOILPROP_NEW(interface_ihru)% COARSE = .FALSE.
+
+
+		
+	CALL PUT(SOILPROP_NEW(interface_ihru))
+!SLNO, SLSOUR,SLTXS,SLDP,SLDESC,TAXON,SALB,U,SwCON,CN,DMOD,SLPF,SMPX
+!DS,LL,DUL,SAT,WR,SWCN,BD,OC,CLAY,SILT,STONES,TOTN,PH,PHKCL,CEC,ADCOEF,
+!
+!DS,EXTP,TOTP,ORGP,CACO,EXTAL,EXTFE,TOTBAS,PTERMA,PTEMB,EXK,EXMG,EXNA,EXTS;
+!SLEC,EXCA,SASC
+!alphaVG,mVG,nVG,WCR,
+!SW,NH4,NO3
+!SLPF soil photo syntesis factor
+END SUBROUTINE interface_SOILPROP
+
+SUBROUTINE interface_solt
+USE parm
+USE ModuleDefs
+IMPLICIT NONE
+END SUBROUTINE interface_solt
+
+SUBROUTINE interface_agro_forestry
+USE parm
+USE ModuleDefs
+IMPLICIT NONE
+END SUBROUTINE interface_agro_forestry
+
+
+SUBROUTINE interface_nutrients_cycle
+USE PARM
+USE ModuleDefs
+IMPLICIT NONE
+END SUBROUTINE interface_nutrients_cycle
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_weather(WEATHER)
+USE parm
+USE ModuleDefs
+USE ModuleData
+IMPLICIT NONE
+REAL::DEC,SRAD,XLAT,CLOUDS,ISINB,S0N,DAYL_DSSAT! already defined in a parm
+REAL::PAR,REFHT,SNDN,SNUP,TDEW,TMAX,TMIN,WINDHT,WINDSP,TA
+REAL,DIMENSION(TS)::AMTRH,AZZON,BETA,FRDIFP,FRDIFR,PARHR
+REAL,DIMENSION(TS)::RADHR,RHUMHR,TAIRHR,TGRO,WINDHR
+REAL::TAVG,TDAY,TGROAV,TGRODY,CCO2,DCO2,DSSAT_CO2,VAPR !CO2 is already defined in parm
+REAL::TWILEN,WINDRUN,LAI_interface
+INTEGER::DOY
+REAL,EXTERNAL::Ee
+TYPE(ControlType) CONTROL
+TYPE(SwitchType) ISWITCH
+TYPE(WeatherType) WEATHER 
+TYPE(Plant_Growth)PlantI
+CALL GET(PlantI)
+LAI_interface=PlantI%LAI
+!write(*,*)'Control%DYNAMIC',CONTROL%DYNAMIC
+
+
+DOY =iida! Day of the Year
+XLAT=sub_lat(interface_ihru)
+CALL DAYLEN(DOY,XLAT,DAYL(interface_ihru),DEC,SNDN,SNUP) !INPUT:DOY,XLAT
+SRAD=hru_ra(interface_ihru)
+CALL SOLAR(DAYL(ihru),DEC,SRAD,XLAT,CLOUDS,ISINB,S0N) ! INPUT:DAYL,DEC,SRAD,XLAT
+!PAR=0.5*SRAD*(1.0-Exp(-ext_coef(idplt(interface_ihru))*(LAI_interface+0.05))) ! Equation from SWAT's grow file
+!PAR=0.43+0.12*exp(-SRAD/2.8)
+PAR=0.50*SRAD
+!if(interface_ihru==1)write(*,*)'interface,PAR=',PAR,'SRAD=',SRAD,'ext_coef=',&
+! ext_coef(idplt(interface_ihru)),'laiday=',LAI_interface
+!REFHT=?
+!TDEW=?
+TMAX=tmx(interface_ihru)
+TMIN=tmn(interface_ihru)
+WINDHT=10
+WINDSP=u10(interface_ihru)*86.400
+CALL HMET(CLOUDS,DAYL,DEC,ISINB,PAR,REFHT,SNDN,SNUP,S0N,SRAD,TDEW,TMAX,TMIN,WINDHT,WINDSP,XLAT,& !INPUT
+AMTRH,AZZON,BETA,FRDIFP,FRDIFR,PARHR,RADHR,RHUMHR,TAIRHR,TAVG,TDAY,TGRO,TGROAV,TGRODY,WINDHR) ! OUTPUT
+CCO2=CO2(interface_ihru) ! From SWAT
+!CALL CO2VAL(CONTROL,ISWITCH,CCO2,DCO2,DSSAT_CO2) !CO2 is a output 
+!DCO2 daily CO2
+!
+
+!     Weather station data
+      WEATHER % REFHT  = 10! INPUT 1.5 Reference height for weather measurement
+      WEATHER % WINDHT = 10 ! INPUT
+      WEATHER % XLAT   = XLAT ! INPUT
+!      WEATHER % XLONG  = XLONG ! INPUT
+      WEATHER % XELEV  = welev(interface_ihru)!XELEV ! INPUT
+      WEATHER % TAMP   = 5 ! TAMP   !INPUT 5 ! Amplitude of the Soil temperature of the ground
+      WEATHER % TAV    = 20 !TAV   ! INPUT 20 ! Average annula soil temperature
+!	if(ihru==1)THEN
+!	write(*,*)'interface,CO2=',CO2(interface_ihru)
+!	end if
+!     Daily data
+      WEATHER % AMTRH  = AMTRH  ! CALCULATED by DSSAT
+      WEATHER % CLOUDS = CLOUDS ! Calculated by DSSAT
+      WEATHER % CO2    = CO2(interface_ihru)*1.5    !INPUT CO2(ihru) comes from SWAT  
+      WEATHER % DAYL   = DAYL(interface_ihru)   !Calculated by DSSAT 
+      WEATHER % OZON7  = 0!OZON7  !INPUT
+      WEATHER % PAR    = PAR    !INPUT
+      WEATHER % RAIN   = subp(interface_ihru)!RAIN   !subp(ihru)  ! INPUT
+      WEATHER % RHUM   = rhd(interface_ihru)!RHUM   !rhd(ihru)  ! at TMIN or TMAX
+      WEATHER % SNDN   = SNDN   ! Calculated by DSSAT
+      WEATHER % SNUP   = SNUP   ! Calculated by DSSAT
+      WEATHER % SRAD   = hru_ra(interface_ihru)!SRAD  !hru_ra(ihru) ! INPUT
+      WEATHER % TA     = TA    ! Calculated by DSSAT !Daily normal temperature?
+      WEATHER % TAVG   = tmpav(interface_ihru)!TAVG  ! tmpac(ihru)
+      WEATHER % TDAY   = TDAY  ! Calculated by DSSAT Average temperature during daylight hours
+      WEATHER % TDEW   = TDEW   ! INPUT 
+      WEATHER % TGROAV = TGROAV ! Calculated by DSSAT Average daily canopy temperature
+      WEATHER % TGRODY = TGRODY ! Calculated by DSSAT
+      WEATHER % TMAX   = tmx(interface_ihru)!TMAX  !tmx(ihru) !INPUT
+      WEATHER % TMIN   = tmn(interface_ihru)!TMIN  !tmn(ihru) !INPUT
+      WEATHER % TWILEN = TWILEN
+      WEATHER % WINDRUN= WINDRUN
+      WEATHER % WINDSP = u10(interface_ihru)*86.400!WINDSP ! u10(ihru)(m/s) INPUT
+      VAPR=rhd(ihru)*Ee(tmpav(interface_ihru)) ! Copied from etpot from swat side
+      WEATHER % VAPR   = VAPR ! INPUT VAPOR pressure
+
+!     Hourly data
+       WEATHER % AZZON  = AZZON 
+       WEATHER % BETA   = BETA  
+       WEATHER % FRDIFP = FRDIFP
+       WEATHER % FRDIFR = FRDIFR
+       WEATHER % PARHR  = PARHR 
+       WEATHER % RADHR  = RADHR 
+       WEATHER % RHUMHR = RHUMHR
+       WEATHER % TAIRHR = TAIRHR
+       WEATHER % TGRO   = TGRO  
+       WEATHER % WINDHR = WINDHR
+
+	RETURN
+END SUBROUTINE interface_weather
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_ECONO(CROP,ECONO)
+IMPLICIT NONE
+CHARACTER(len=2)::CROP
+CHARACTER(len=6)::ECONO
+SELECT CASE(CROP)
+CASE('SB') !1
+ECONO='CAND01'
+CASE('CP') !2
+ECONO='CP0414'
+CASE('LE') !3
+ECONO='LAT001'
+CASE('PN') !4
+ECONO='RUNNER'
+CASE('CO') !5
+ECONO='CO0001'	
+CASE('SU') !6
+ECONO='SU0702'
+CASE('CN') !7
+ECONO='DFAULT'
+CASE('GB') !8
+ECONO='SNAPBN'
+CASE('PR') !9
+ECONO='DFAULT'
+CASE('TM') !10
+ECONO='999991'
+END SELECT 
+
+END SUBROUTINE interface_ECONO
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_begin(SOURCE,LENGTH)
+! Inside scenario loop, but before time loop
+!In this routine SWITCH etc that controls DSSAT routine are defined
+USE ModuleDefs
+USE parm,ONLY:idplt,idc,iyr,cpnm
+USe ModuleData
+IMPLICIT NONE
+INTEGER::i,YRPLT,MDATE,YREND,LENGTH
+INTEGER::FILE_ID
+character(LEN=length)::source
+CHARACTER(len=2)::DSSAT_CROP
+TYPE(ControlType) CONTROL
+TYPE(SwitchType) ISWITCH
+TYPE(LAND_S) LAND_C
+TYPE(ToSwatTYPE) ToSwat
+
+ModelVerTxt='048'
+CALL interface_FILE(FILES)
+write(*,*)'INTERFACE BEGIN'
+!STOP
+! Make this more robust
+if(source.EQ.'simul')THEN
+ALLOCATE(FERT_NEW(nhru))
+ALLOCATE(TILLNO_INTERFACE(nhru))
+TILLNO_INTERFACE=0
+ALLOCATE(CONTROL_NEW(nhru))
+ALLOCATE(SOILPROP_NEW(nhru))
+ALLOCATE(MULCH_NEW(nhru))
+ALLOCATE(OLD_CROP(nhru))
+ALLOCATE(PLANTING_DSSAT(nhru))
+ALLOCATE(YRPLT_interface(nhru))
+ALLOCATE(MDATE_interface(nhru))
+ALLOCATE(P_GROWTH(nhru))
+ALLOCATE(LAND_NEW(nhru))
+ALLOCATE(ToSwat_NEW(nhru))
+ALLOCATE(ORG_FERT(nhru))
+ALLOCATE(ORG_RESIDUE(nhru))
+ALLOCATE(PLANT_SOURCE(nhru))
+ALLOCATE(ORIGINAL_DSSAT(nhru,6,2))
+ALLOCATE(RESIDUE_TYPE(nhru))
+ALLOCATE(TILL_DATA(nhru))
+ALLOCATE(year_old(nhru))
+year_old=iyr
+PLANT_SOURCE='    '	
+ORIGINAL_DSSAT=0
+PLANTING_DSSAT=0
+YRPLT_interface=10000*1000
+MDATE_interface=10000*1000
+END IF
+
+ISWITCH%MEPHO='C' ! Was C
+ISWITCH%MESOM='P'
+ISWITCH%MEEVP='R'
+ISWITCH%MESEV='S' ! No UP_FLOW NEEDED
+ISWITCH%ISWWAT='Y'
+ISWITCH%MEINF='M' ! (M is muclh modelled, N Mulch is not modelled)
+ISWITCH%FMOPT='A'  ! (Output format A=ASCII,C=CSV
+ISWITCH%IDETL='N'  ! Detail output (verbosity)
+ISWITCH%IDETH='N'  ! Chemical output
+ISWITCH%IDETC='N'  ! Carbon output
+ISWITCH%IDETD='N'   ! Disease and pest output
+ISWITCH%IDETG='Y'   ! Growth output files
+ISWITCH%IDETN='N'   ! NItrogen output
+ISWITCH%IDETO='N'   ! Overview file
+ISWITCH%IDETP='N'   ! Phosporus output	
+ISWITCH%IDETR='N'   ! Management operation output	
+ISWITCH%IDETS='Y'   ! Summary output
+ISWITCH%IDETW='N'   ! Water output	
+ISWITCH%ISWCHE=''   ! Chemicals application
+ISWITCH%ISWDIS=''   !Pest and deseases
+ISWITCH%ISWNIT='Y'   ! NItrogen
+ISWITCH%ISWPHO='Y'   ! Phosporus
+ISWITCH%ISWPOT='N'  ! K Potassium simulation
+ISWITCH%ISWSYM=''   ! Symbiosis (N fixation)
+ISWITCH%ISWTIL='Y'  ! Tillage
+ISWITCH%ISWWAT='Y'  !Water simulation
+ ISWITCH%IFERI='F'
+ISWITCH%IPLTI='R'    ! Planting date method switch (A,R,F)
+!ISWITCH%ISIMI='P'  ! E=on reported emergence day, P= on reported planting date
+KYTKIN=ISWITCH 
+
+IF(SOURCE.EQ.'simul')THEN
+DO i=1,nhru
+write(*,*)'i=',i	
+	interface_ihru=i
+	!write(*,*)'Interface,i=',i
+	! INITILIZATION of variables
+	CONTROL_NEW(i)%DYNAMIC=RUNINIT
+	!write(*,*)'INTERFACE;PLANT=',cpnm(idplt(i))
+	CALL interface_mapping(cpnm(idplt(i)),DSSAT_CROP,RESIDUE_TYPE(i),FILE_ID)
+    write(*,*)'INTERFACE;PLANT=',cpnm(idplt(i)),'                    DSSAT=',DSSAT_CROP
+	
+	SELECT CASE(idc(idplt(i)))
+		CASE(3,6,7)
+			CONTROL_NEW(i)%CROP='WA' ! WA =WATDEV
+			PLANT_SOURCE(i)='SWAT'
+		CASE default
+			IF(.not.agro_forestry)THEN
+				CONTROL_NEW(i)%CROP=DSSAT_CROP
+				IF(DSSAT_CROP.NE.'WA')THEN
+				!write(*,*)'interface2:DSSAT CROP=',DSSAT_CROP,'ihru=',i
+				!P_GROWTH(i)%ECONO='CO0001'!'LAT001'!'999991'!'CAND01'
+				CALL interface_ECONO(DSSAT_CROP,P_GROWTH(i)%ECONO)
+				PLANT_SOURCE(i)='DSAT'
+				!STOP 
+				ELSE
+				PLANT_SOURCE(i)='SWAT'
+				END IF
+			ELSE
+				CONTROL_NEW(i)%CROP='WA' ! WA = WATDEV, indicating modification
+			END IF
+	END SELECT
+	IF(i==1332)THEN
+	write(*,*)'CROP=',CONTROL_NEW(i)%CROP,'ihru=',i
+	!STOP
+	END IF
+	OLD_CROP(i)=DSSAT_CROP
+	!CONTROL_NEW(i)%CROP
+	!CONTROL_NEW(i)%FILEIO
+	CONTROL_NEW(i)%MODEL='CRGRO'
+	CONTROL_NEW(i)%N_ELEMS=3
+	CONTROL_NEW(i)%FROP=7
+	CONTROL_NEW(i)%YRDOY=iyr*1000
+	!CONTROL_NEW(i)%YRSIM
+	CONTROL_NEW(i)%RUN=1
+        CONTROL_NEW(i)%RNMODE='N' ! QF on jatkuva?
+        CONTROL_NEW(i)%DAS=0
+	!write(*,*)'iyr=',iyr
+	CONTROL_NEW(i)%YRSIM=iyr*1000 ! YYYYDDD
+
+	YRPLT=iyr*10000
+	CONTROL=CONTROL_NEW(i)
+	CALL PUT(P_GROWTH(i))
+	write(*,*)'TO Land runinit,interface_ihru=',interface_ihru
+	! RUNINIT
+	CALL LAND(CONTROL,ISWITCH,YRPLT,MDATE,YREND)
+	!IF(i==1)THEN
+	!CALL GET(P_GROWTH(i))
+	!write(*,*)'RUN INIT,PROSTI=',P_GROWTH(i)%PROSTI,'i=',i
+	!END IF
+	CONTROL_NEW(i)%DYNAMIC=SEASINIT
+	Call GET(ToSwat)
+	CAll GET(LAND_C)
+	ToSwat_NEW(i)=ToSwat
+	LAND_NEW(i)=LAND_C
+	
+	CONTROL=CONTROL_NEW(i)
+	! SEASINIT
+	CALL LAND(CONTROL,ISWITCH,YRPLT,MDATE,YREND)
+	        IF(i==1)THEN
+        CALL GET(P_GROWTH(i))
+        !write(*,*)'SEASINIT, PROSTI=',P_GROWTH(i)%PROSTI,'i=',i
+        END IF
+
+
+	CONTROL_NEW(i)%DYNAMIC=RATE
+	CALL GET(P_GROWTH(i))
+	CALL GET(ToSwat)
+	!if(i==1)THEN
+	!write(*,*)'XLEAF=',P_GROWTH(i)%XLEAF
+	!write(*,*)'YLEAF',P_GROWTH(i)%YLEAF
+	
+	!END IF
+END DO
+
+
+END IF
+!write(*,*)'interface_begin, KYTKIN=',KYTKIN%ISWWAT
+RETURN	
+	!ISWITCH%IPLTI= ! Panting switch 	
+END SUBROUTINE interface_begin
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_speciesDATA(FILEC,PATHCR,FILEE,PATHEC)
+IMPLICIT NONE
+CHARACTER(len=12)::FILEC
+CHARACTER(len=12),OPTIONAL::FILEE
+CHARACTER(len=80)::PATHCR
+CHARACTER(len=80),OPTIONAL::PATHEC
+CHARACTER(len=2)::CROP
+CHARACTER(len=10)::BEGIN,BEGIN2
+
+CROP=CONTROL_NEW(interface_ihru)%CROP
+BEGIN='GRO048.ECO'
+BEGIN2='GRO048.SPE'
+FILEC=TRIM(CROP)//TRIM(BEGIN2)
+
+!FILEC='COGRO048.SPE'
+if(present(FILEE))THEN
+FILEE=TRIM(CROP)//TRIM(BEGIN)
+!FILEE='COGRO048.ECO'
+END IF
+PATHCR='/mnt/modeller3/WATDEV/TOOLBOX/SourceCode_dssat-csm-os-master_v4.8/Data/Genotype/'
+IF(present(PATHEC))THEN
+PATHEC=PATHCR
+END IF
+
+write(*,*)'interface_speciesDATA:interface_ihru=',interface_ihru
+write(*,*)'CROP=',CROP
+write(*,*)'FILEC=',FILEC
+IF(present(FILEE))write(*,*)'FILEE=',FILEE
+write(*,*)'PATHCR',PATHCR
+RETURN
+END SUBROUTINE interface_speciesDATA
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_LAND(day_number)
+USE parm
+USE ModuleDefs
+USE ModuleData
+USE FloodModule
+IMPLICIT NONE
+TYPE(ControlType) CONTROL
+TYPE(SwitchType) ISWITCH
+TYPE(SoilType) SOILPROP
+TYPE(Plant_Growth) PlantI
+TYPE(ToSwatType) ToSwat
+TYPE(LAND_S) LAND_C
+INTEGER::YRPLT,YREND,MDATE,day_number,idp
+REAL::LL(NL),delgI
+REAL::KERROS(NL),TILAVUUS(NL),MASSA(NL)
+INTEGER::L,VAIHTO
+
+interface_ihru=ihru
+PlantI=P_GROWTH(ihru)
+ToSwat=ToSwat_NEW(interface_ihru)
+SOILPROP=SOILPROP_NEW(interface_ihru)
+!write(*,*)'interface_LAND,MDATE=',MDATE_interface(ihru),'ihru=',ihru
+
+LAND_C=LAND_NEW(interface_ihru)
+ORIGINAL_DSSAT(interface_ihru,1,1)=PlantI%TOPWT
+ORIGINAL_DSSAT(interface_ihru,2,1)=PlantI%WTNCAN
+ORIGINAL_DSSAT(interface_ihru,3,1)=ToSwat%PPlant2_kg
+
+CALL PUT(ToSwat)
+CALL PUT(LAND_C)
+!if(ihru==1)THEN
+!write(*,*)'Interface_LAND,ihru=',ihru
+!write(*,*)'CROP=',CONTROL_NEW(ihru)%CROP
+!write(*,*)CONTROL_NEW%CROP
+!write(*,*)'PlantI%AREALF=',PlantI%AREALF
+!END IF
+
+ISWITCH=KYTKIN
+CALL PUT(ISWITCH)
+!CONTROL%CROP=
+!CONTROL%DYNAMIC=
+!CONTROL%FILEIO=
+!CONTROL%MODEL=
+!CONTROL%YRDOY=
+!CONTROL%YRSIM=
+
+!write(*,*)'PLANTING_DSSAT=',PLANTING_DSSAT(ihru),'ihru=',ihru
+!if(interface_ihru==1)THEN
+!write(*,*)'inteface_ihru=',interface_ihru,PlantI%PROSTI
+
+IF(PLANT_SOURCE(ihru).EQ.'DSAT')THEN
+IF(ihru==4)THEN
+write(*,*)cpnm(idplt(ihru)),'ihru=',ihru,'PLANTING_DSSAT=',PLANTING_DSSAT(ihru)
+STOP
+END IF
+END IF
+!write(*,*)'-------------------OMA_INTERFACE-----------------------------------------------'
+!STOP
+!END IF
+CALL PUT(PlantI)
+
+CONTROL_NEW(ihru)%DAS=day_total
+CONTROL_NEW(ihru)%YRDOY=(iyr)*1000+day_number
+!YRPLT=(iyr+curyr-1)*1000+day_number+1
+VAIHTO=0
+if(ihru==1)write(*,*)'VANHA=',year_old(ihru),'NYKYINEN=',iyr,'curyr=',curyr
+IF(year_old(ihru)<iyr)THEN
+YRPLT_interface(ihru)=10000000
+!MDATE_interface(ihru)=10000
+year_old(ihru)=iyr
+VAIHTO=1
+write(*,*)'PLANTING_DSSAT=',PLANTING_DSSAT(ihru),'SOURCE=',PLANT_SOURCE(ihru)
+!STOP
+END IF
+IF(PLANTING_DSSAT(ihru)==1)THEN
+YRPLT_interface(ihru)=(iyr)*1000+day_number
+END IF
+
+IF(PLANTING_DSSAT(ihru)==5.OR.PLANTING_DSSAT(ihru)==7.OR.PLANTING_DSSAT(ihru)==8)THEN
+MDATE_interface(ihru)=(iyr)*1000+day_number
+YRPLT_interface(ihru)=10000000
+END IF
+
+
+YRPLT=YRPLT_interface(ihru)
+MDATE=MDATE_interface(ihru)
+YREND=MDATE
+!IF(MDATE>10000000)write(*,*)'MDATE=',MDATE,PLANT_SOURCE(interface_ihru)
+!YRPLT=CONTROL_NEW(ihru)%YRPLT
+CONTROL=CONTROL_NEW(ihru)
+CALL PUT(CONTROL)
+!ISWITCH%IPLTI
+!ISWITCH%MESOM='P' ! Century based SOM model
+!ISWITCH%MEPHO='C'
+!ISWITCH%MEEVP='R'
+!write(*,*)'TO LAND routine:','DYNAMIC=',CONTROL%DYNAMIC,'ihru=',ihru, 'RUNINIT=',RUNINIT,'SEASINIT=',SEASINIT,'RATE=',RATE
+!write(*,*)'Interface','PLANTING_DSSAT=',PLANTING_DSSAT(ihru)
+!if(CONTROL%DYNAMIC.EQ.RATE)THEN
+!write(*,*)'To LAND,DYNAMIC=',RATE
+!STOP
+!END IF
+SOILPROP=SOILPROP_NEW(ihru)
+CALL PUT(SOILPROP)
+if(SUM(SOILPROP%DLAYR)==0)THEN
+write(*,*)'BEFORE INterface_LAND,SUM(SOILPROP%DLAYR)=',SUM(SOILPROP%DLAYR),'interface_ihru=',interface_ihru,'ihru',ihru
+write(*,*)SOILPROP_NEW(ihru)%DLAYR
+STOP
+END IF
+!	IF(ihru==1)THEN
+ !		write(*,*)'To LAND'
+ !		write(*,*)'PLTPOP=',P_GROWTH(ihru)%PLTPOP
+      	
+!	END IF
+!write(*,*)'interface2,YRPLT=',YRPLT,PlantI%NVEG0,'ihru=',interface_ihru
+!write(*,*)'P_GROWTH',P_GROWTH(ihru)%NVEG0
+!write(*,*)'INTERFACE_LAND,PLANTING_DSSAT=',PLANTING_DSSAT(interface_ihru),interface_ihru,'YRPLT=',YRPLT
+
+IF(VAIHTO==1)THEN
+ 
+
+CONTROL_NEW(ihru)%DYNAMIC=SEASINIT
+CALL LAND(CONTROL_NEW(ihru),ISWITCH,YRPLT,MDATE,YREND)
+CONTROL_NEW(ihru)%DYNAMIC=RATE
+!STOP
+VAIHTO=0
+END IF
+
+if(PLANTING_DSSAT(interface_ihru)>0)write(*,*)'To LAND,PLANTING_DSSAT=',PLANTING_DSSAT(interface_ihru),&
+'ihru=',interface_ihru,PLANT_SOURCE(interface_ihru)
+!Rate
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!write(*,*)'To Land, Rate'
+CALL LAND(CONTROL_NEW(ihru),ISWITCH,YRPLT,MDATE,YREND)
+CALL GET(PlantI)
+CALL GET(SOILPROP)
+SOILPROP_NEW(interface_ihru)=SOILPROP
+if(SUM(SOILPROP%DLAYR)==0)THEN
+write(*,*)'MIDDLE INterface_LAND,SUM(SOILPROP%DLAYR)=',SUM(SOILPROP%DLAYR),'interface_ihru=',interface_ihru,'ihru',ihru
+write(*,*)SOILPROP_NEW(ihru)%DLAYR
+STOP
+END IF
+
+
+
+CONTROL_NEW(ihru)%DYNAMIC=INTEGR
+CONTROL=CONTROL_NEW(ihru)
+CALL PUT(CONTROL)
+
+KERROS(1)=sol_z(1,interface_ihru)
+DO L=2,NL
+KERROS(L)=sol_z(L,interface_ihru)-sol_z(L-1,interface_ihru)
+END DO
+KERROS=KERROS*0.001
+TILAVUUS=hru_ha(interface_ihru)*10**4*KERROS
+MASSA=TILAVUUS*sol_bd(:,interface_ihru)*10**6
+
+sol_no3(:,interface_ihru)=ToSwat%NO3  ! micro g/g
+sol_nh3(:,interface_ihru)=ToSwat%NH4  ! micro g/g
+
+sol_nh3(:,interface_ihru)=sol_nh3(:,interface_ihru)*MASSA/10**9
+sol_no3(:,interface_ihru)=sol_no3(:,interface_ihru)*MASSA/10**9
+sol_nh3(:,interface_ihru)=sol_nh3(:,interface_ihru)/(hru_ha(interface_ihru))
+sol_no3(:,interface_ihru)=sol_no3(:,interface_ihru)/(hru_ha(interface_ihru))
+
+
+!if(ihru==1)write(*,*)'To land,DYNAMIC=',CONTROL%DYNAMIC
+CALL GET(PlantI)
+!IF(YRPLT<(iyr+curyr-1)*1000+day_number)THEN
+!IF(PLANT_SOURCE(interface_ihru).EQ.'DSAT')THEN
+!write(*,*)'Interface2,WTNLF=',PlantI%WTNLF,&
+!'ihru',interface_ihru,PLANT_SOURCE(interface_ihru),YRPLT_interface(interface_ihru)
+!IF(PlantI%WTNLF==0)STOP
+!END IF
+!END IF
+
+!INTEGRATE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!write(*,*)'INTERFACE_LAND,BEFORE,INTEG,SOILPROP=',SOILPROP%DLAYR
+!write(*,*)'To Land, INTEGR'
+CALL LAND(CONTROL_NEW(ihru),ISWITCH,YRPLT,MDATE,YREND)
+
+
+SOILPROP_NEW(interface_ihru)=SOILPROP
+if(SUM(SOILPROP%DLAYR)==0)THEN
+write(*,*)'After INterface_LAND,SUM(SOILPROP%DLAYR)=',SUM(SOILPROP%DLAYR),'interface_ihru=',interface_ihru,'ihru',ihru
+write(*,*)SOILPROP_NEW(ihru)%DLAYR
+STOP
+END IF
+
+
+CALL GET(PlantI)
+!write(*,*)interface_ihru,PlantI%NVEG0
+IF(YRPLT+1<(iyr+curyr-1)*1000+day_number)THEN
+IF(PLANT_SOURCE(interface_ihru).EQ.'DSAT')THEN
+!write(*,*)'Interface2,WTNLF=',PlantI%WTNLF,&
+!'ihru',interface_ihru,PLANT_SOURCE(interface_ihru),YRPLT_interface(interface_ihru)
+!IF(PlantI%WTNLF==0)STOP
+END IF
+END IF
+!write(*,*)interface_ihru,PlantI%NVEG0
+!write(*,*)interface_ihru,PlantI%NVEG0
+P_GROWTH(ihru)=PlantI	
+CONTROL_NEW(ihru)%DYNAMIC=OUTPUT
+CONTROL=CONTROL_NEW(ihru)
+CALL PUT(CONTROL)
+!if(ihru==1)write(*,*)'To LAND, DYNAMIC=',CONTROL%DYNAMIC
+
+CALL LAND(CONTROL,ISWITCH,YRPLT,MDATE,YREND)
+CONTROL_NEW(ihru)%DYNAMIC=RATE
+
+CALL GET(SOILPROP)
+!write(*,*)'AFTER,SOILPROP=',SOILPROP%DLAYR,'interface_ihru=',interface_ihru
+SOILPROP_NEW(interface_ihru)=SOILPROP
+CALL GET(LAND_C)
+CALL GET(PlantI)
+!write(*,*)'interface_ihru',interface_ihru,PlantI%NVEG0
+if(day_number==1)THEN
+OPEN(unit=10001,file='OUTdemo.txt')
+END IF
+
+if(interface_ihru==1)THEN
+write(10001,*)day_number,PlantI%TOPWT,PlantI%TOTWT
+END IF
+
+if(PLANT_SOURCE(interface_ihru).EQ.'DSAT')THEN
+ idp = idplt(interface_ihru)
+delgI= 0.
+        if (phu_plt(interface_ihru) > 0.1) then
+          delgI = (tmpav(interface_ihru) - t_base(idp)) / phu_plt(interface_ihru)
+        end if
+        if (delgI < 0.) delgI = 0.
+        phuacc(interface_ihru) = phuacc(interface_ihru) + delgI  
+	!write(*,*)'phuacc=',phuacc(interface_ihru)
+END IF
+
+
+
+sol_fc(interface_ihru,:)=SOILPROP%SW-SOILPROP%LL
+albday=SOILPROP%SALB
+sol_st(interface_ihru,:)=LAND_C%ST
+
+! g/m^2 =10000 g/ha =10 kg/ha = 0.01 ton/ha
+if(PLANT_SOURCE(interface_ihru).EQ.'DSAT')bio_ms(ihru)=PlantI%TOPWT*0.01   
+
+ORIGINAL_DSSAT(interface_ihru,1,2)=PlantI%TOPWT
+ORIGINAL_DSSAT(interface_ihru,2,2)=PlantI%WTNCAN
+ORIGINAL_DSSAT(interface_ihru,3,2)=ToSwat%PPlant2_kg
+
+!ORIGINAL_DSSAT(interface_ihru,4,1)=PlantI%TOPWT
+SOILPROP_NEW(ihru)=SOILPROP
+
+!IF(CONTROL%DYNAMIC.EQ.RUNINIT)THEN
+!CONTROL_NEW(ihru)%DYNAMIC=RATE
+!END IF
+!write(*,*)'From LAND routine',CONTROL%DYNAMIC
+!stop
+IF(PLANT_SOURCE(interface_ihru).EQ.'DSAT')THEN
+!write(*,*)'Interface_LAND',bio_ms(interface_ihru),'SOURCE=',PLANT_SOURCE(interface_ihru),'CROP=',CONTROL%CROP
+!write(*,*)'MDATE=',MDATE,'YREND=',PlantI%YREND
+!IF(MDATE<10000000)STOP
+END IF
+IF(yr_skip(interface_ihru)==1)PLANTING_DSSAT(interface_ihru)=17
+write(*,*)'interface_LAND,yldanu=',yldanu(interface_ihru),'ihru=',ihru,'SOURCE=',PLANT_SOURCE(interface_ihru)
+
+
+
+
+
+! CALL interface_mapping(cpnm(idplt(i)),DSSAT_CROP,RESIDUE_TYPE(i),FILE_ID)
+!    write(*,*)'INTERFACE;PLANT=',cpnm(idplt(i)),'                    DSSAT=',DSSAT_CROP!
+!
+ !       SELECT CASE(idc(idplt(i)))
+  !              CASE(3,6,7)
+   !                     CONTROL_NEW(i)%CROP='WA' ! WA =WATDEV
+    !                    PLANT_SOURCE(i)='SWAT'
+     !           CASE default
+      !                  IF(.not.agro_forestry)THEN
+       !                         CONTROL_NEW(i)%CROP=DSSAT_CROP
+        !                        IF(DSSAT_CROP.NE.'WA')THEN
+         !                       !write(*,*)'interface2:DSSAT CROP=',DSSAT_CROP,'ihru=',i
+          !                      !P_GROWTH(i)%ECONO='CO0001'!'LAT001'!'999991'!'CAND01'
+          !                      CALL interface_ECONO(DSSAT_CROP,P_GROWTH(i)%ECONO)
+          !                      PLANT_SOURCE(i)='DSAT'
+          !                      !STOP
+          !                      ELSE
+          !                      PLANT_SOURCE(i)='SWAT'
+          !                      END IF
+          !              ELSE
+          !                      CONTROL_NEW(i)%CROP='WA' ! WA = WATDEV, indicating modification
+          !              END IF
+        !END SELECT
+
+
+
+
+
+
+
+
+END SUBROUTINE interface_LAND
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_MULCH(INFILT_SWAT)
+Use parm
+IMPLICIT NONE
+REAL::INFILT_SWAT
+
+CALL MULCHWATER(CONTROL_NEW(ihru),KYTKIN,INFILT_SWAT,MULCH_NEW(ihru))
+
+RETURN
+END SUBROUTINE interface_MULCH
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_WATBAL(DRN,SNOW,SW,SWDELTS,TDFC,TDLNO,UPFLOW,WINF,DSOIL,DLAYR,DUL,LL,NLAYR,THETAU,SWDELTX,IRRIG)
+! Should return FLOODWAT,MULCH,SWDELTU,DRN,SNOW,SW,SWDELTS,TDFC,TDLNO,UPFLOW,WINF
+USE ModuleDefs
+USE FloodMOdule
+USE parm ! SWAT parameters
+IMPLICIT NONE
+TYPE(FloodWatType):: FLOODWAT
+TYPE(MulchType):: MULCH
+TYPE(ControlType):: CONTROL
+TYPE(SwitchType):: ISWITCH
+REAL,DIMENSION(NL)::SWDELTU
+REAL,DIMENSION(NL)::DRN,SW,SWDELTS,UPFLOW,DLAYR,DUL,LL
+REAL,DIMENSION(NL)::SWDELTT,SWDELTL,SWDELTX
+REAL::WINF,TDFC,SNOW,INFILT_SWAT 
+INTEGER::TDLNO
+! Local variables
+INTEGER::L,i1
+REAL::watavl,PINF,INFILT, MULCHSAT,MULCHMASS,MULCHCOVER,MULCHEVAP,WATFAC,DEFICIT,MULCHWAT,RESWATADD,MULWATADD
+REAL::MULWATAVL,NRAIN,IRRIG
+LOGICAL::PUDDLED,BUNDED
+
+REAL:: WET1,TSWTOP,DEPMAX,DSOIL,XDEPL,XDEP
+REAL::ATHETA,SWDEF,THETAU
+INTEGER::NLAYR,DYNAMIC
+
+
+! SWDELTU- Change in a soil water content due to evaporation and/or upward movement
+! DRN- Drainage rate throught soil layer L (cm/d) X
+! SNOW - SNOW accumulation today (mm)             X
+! SW -Volumetric soil water content in a layer L
+! SWDELTS - Change in a soil water content due to drainage in layer L 
+! TDFC - SUm of tiledrain flow from beginning of the model run
+! TDLNO - Layer number containing tile drain
+! UPFLOW - Volume of water moving from soil layer L by unsaturated ... ..  X
+! WINF - The amount of water that infiltrates (mm)
+
+!FLOOD=FLOODWAT%FLOOD
+!PUDPERC=FLOODWAT%PUDPERC
+
+! Variables from SWAT that corrensponds varables from DSSAT
+!lyrtile =
+!qtile  = drainage tile flow for a profile for a day
+!inflpcp = Amount of water available to infiltration 
+! es_layer = ES_LYR ! Modification done by JJ to etatc.f routine of SWAT cod
+
+DYNAMIC=CONTROL_NEW(ihru)%DYNAMIC
+
+!IF(DYNAMIC .EQ.RATE)THEN
+    ! Water first absorbed by Mulch if present 	
+!	WATAVL=precipday
+!    CALL MULCHWATER(CONTROL_NEW(ihru),KYTKIN,WATAVL,MULCH_new(ihru))
+
+
+WINF=inflpcp
+WINF=WINF+IRRIG
+TDLNO=ldrain(ihru)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!write(*,*)'From interface, DRN_SWAT=',DRN_SWAT(1)
+DRN=DRN_SWAT
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SNOW as a water equivalance
+SNOW=sno_hru(ihru)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!TDFC= 
+SW(1)=sol_st(1,ihru)/sol_z(1,ihru)
+SW(1)=SW(1)+SWDELTX(1)+IRRIG
+sol_st(1,ihru)=sol_st(1,ihru)+DLAYR(1)*10*SWDELTX(1)
+DO i1=2,sol_nly(ihru)
+	SW(i1)=(sol_st(i1,ihru))/(sol_z(i1,ihru)-sol_z(i1-1,ihru))
+	SW(i1)=SW(i1)+SWDELTX(i1)
+	sol_st(i1,ihru)=sol_st(i1,ihru)+DLAYR(i1)*10*SWDELTX(i1)
+END DO
+	
+!if(interface_ihru==1)THEN
+!write(*,*)'Soil water:',SW
+!END IF 
+IF(ISWITCH%MESEV.NE.'S')THEN
+!If switch MESEV is S UPFLOW is calculated by ESR_SoilEvap routine. 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!Calculate UPFLOW similarly than it is done in ESR_SoilEvap routine that is part of DSSAT
+
+UPFLOW(sol_nly(ihru))=es_layer(sol_nly(ihru))/10. 
+DO L=sol_nly(ihru)-1,1,-1
+	UPFLOW(L)=UPFLOW(L+1)+es_layer(sol_nly(ihru))/10.
+END DO
+END IF
+!write(*,*)'UP_FLOW by ESR_SoilEvap:',UPFLOW
+! Water first used by mulch
+	WATAVL=precipday+IRRIG
+	CALL MULCHWATER(CONTROL_NEW(ihru),KYTKIN,WATAVL,MULCH_new(ihru))
+	
+
+         
+	!FLOODWAT%INFILT=
+	!FLOODWAT%RUNOFF=
+
+! cODE COPED FROM swdeficit THAT IS PART OF irrig.FOR FILE. 
+      WET1 = 0.0
+      DEPMAX = 0.0
+      TSWTOP = 0.0
+      DEPMAX = 0.0
+
+      DO L = 1,NLAYR
+        IF (DEPMAX .LT. DSOIL) THEN
+          XDEPL  = DEPMAX
+          DEPMAX = DEPMAX + DLAYR(L)
+          IF (DEPMAX .GT. DSOIL) THEN
+            XDEP = (DSOIL - XDEPL)
+          ELSE
+            XDEP = DLAYR(L)
+          ENDIF
+          WET1 = WET1   + (DUL(L) - LL(L)) * XDEP
+          TSWTOP = TSWTOP + (SW(L) - LL(L)) * XDEP
+        ENDIF
+      ENDDO
+
+      ATHETA = TSWTOP / WET1
+!      SWDEF  = MAX(0.0,(WET1 - (TSWTOP)))                 ! old, upper limit for automatic irrigation does not work
+      SWDEF  = MAX(0.0,((WET1*THETAU*0.01) - TSWTOP))
+	IF(SWDEF<0)THEN
+write(*,*)'interface_WATBAL,SWDEF=',SWDEF
+STOP
+END IF
+RETURN
+END SUBROUTINE interface_WATBAL
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_daily_output
+IMPLICIT NONE
+
+END SUBROUTINE interface_daily_output
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE READ_COUPLING
+! This subroutine read switches from a input FILE
+! created because of the coupling of SWAT and DDSAT
+IMPLICIT NONE
+INTEGER::ios
+OPEN(1001,file='DSSATtoSWAT.txt',iostat=ios)
+if(ios.EQ.0)THEN
+READ(1001,*)useDSSAT,origSWAT0,origSWAT1,origSWAT2,agro_forestry,origSWAT3,origSWAT4,origSWAT5
+ELSE
+write(*,*)'Error in opening file. Terminating performance'
+STOP
+END IF
+!write(*,*)'Moi'
+END SUBROUTINE READ_COUPLING
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_DSSAT_switch
+use ModuleDefs
+IMPLICIT NONE
+! RNMODE supported by original DSSAT routine. 
+!C-----------------------------------------------------------------------
+!C     RNMODE:  
+!C      A - Run all treatments.  User specifies fileX on the command
+!C          line and the model runs all treatments
+!C      B - Batch mode. User defines fileX and treatment numbers in 
+!C          Batch file
+!C      C - Command line mode.  Use input from the command line.
+!C      D - Debug mode.  Model skips input module and reads temp
+!C          file from the command line
+!C      E - Sensitivity analysis.  User defines fileX and treatment
+!C          number in Batch file 
+!C      F - Farm model.  Use Batch file to define experiment
+!C      G - Gencalc. Use Command line to define experiment and treatment
+!C      I - Interactive mode.  Use model interface for exp. & trtno.
+!C      L - Gene based model (Locus). Use Batch file to define experiment
+!C      N - Seasonal analysis. Use Batch file to define experiment and 
+!C          treatments 
+!C      Q - Sequence analysis. Use Batch file to define experiment
+!C      S - Spatial.  Use Batch file to define experiment
+!C      T - Gencalc. Use Batch file to define experiments and treatment
+!C      Y - Yield forecast mode. Use batch file.
+!C-----------------------------------------------------------------------
+
+
+
+!FILEIO = 'DSSAT48.INP'
+!CALL IPIBS (CONTROL, ISWITCH, CROP, IDETS, MODEL)
+
+END SUBROUTINE interface_DSSAT_switch
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_plant_inityr
+! Purpose read yearly initial values for plants. 
+use parm
+use ModuleDefs
+USE FloodModule
+IMPLICIT NONE
+REAL::CANHT,EOP,HARVFRAC(2),NH4(NL),NO3(NL),ST(NL),SW(NL),EORATIO,KTRANS,NSTRES,PStres1
+REAL::PORMIN,RLV(NL),RWUMX,UNH4(NL),UNO3(NL),XHLAI,XLAI,KSEVAP,TRWUP
+REAL,DIMENSION(NL)::SPi_AVAIL,PUptake,FracRts
+INTEGER::YREND,YRPLT,STGDOY(20),MDATE
+
+REAL::EO,EOS,EP,ES,SNOW,SRFTEMP,TRWU
+REAL, DIMENSION(NL) :: UPPM,Kuptake,SKi_Avail,UH2O  !, RWU
+REAL, DIMENSION(0:NL) :: SomLitC
+REAL, DIMENSION(0:NL,NELEM) :: SomLitE
+TYPE (ControlType) CONTROL
+TYPE (SoilType) SOILPROP
+TYPE (SwitchType) ISWITCH
+Type (ResidueType) HARVRES
+Type (ResidueType) SENESCE
+Type (WeatherType) WEATHER
+TYPE (FloodWatType) FLOODWAT
+TYPE (FloodNType)   FLOODN
+
+!     The following models are currently supported:
+!         'CRGRO' - CROPGRO
+!         'CSCER' - CERES Wheat, Barley
+!         'CSCRP' - CropSim Wheat, Barley
+!         'CSCAS' - CropSim/GumCAS Cassava
+!         'CSYCA' - CIAT Cassava model
+!         'MLCER' - CERES-Millet
+!         'MZCER' - CERES-Maize
+!         'PTSUB' - SUBSTOR-Potato
+!         'RICER' - CERES-Rice
+!         'SCCAN' - CANEGRO Sugarcane
+!         'SCCSP' - CASUPRO Sugarcane
+!         'SCSAM' - SAMUCA Sugarcane
+!         'SGCER' - CERES-Sorghum
+!         'SWCER' - CERES-Sweet corn
+!         'MZIXM' - IXIM Maize
+!         'TNARO' - Aroids - Tanier
+!         'TRARO' - Aroids - Taro
+!         'RIORZ' - IRRI ORYZA Rice model
+!         'WHAPS' - APSIM N-wheat
+!         'TFAPS' - APSIM Tef
+!         'PRFRM' - Perennial forage model
+!         'BSCER' - Sugarbeet
+
+
+
+!     Transfer values from constructed data types into local variables.
+!      CROP    = CONTROL % CROP
+!      DYNAMIC = CONTROL % DYNAMIC
+!      MODEL   = CONTROL % MODEL
+!      RNMODE  = CONTROL % RNMODE
+!      RUN     = CONTROL % RUN!
+
+ !     MEEVP  = ISWITCH % MEEVP
+ !     BUNDED = FLOODWAT % BUNDED
+ !     CO2    = WEATHER % CO2
+ !     DAYL   = WEATHER % DAYL
+ !     PAR    = WEATHER % PAR
+  !    SRAD   = WEATHER % SRAD
+  !    TAVG   = WEATHER % TAVG
+  !    TGRO   = WEATHER % TGRO
+  !    TGROAV = WEATHER % TGROAV
+  !    TMAX   = WEATHER % TMAX
+  !    TMIN   = WEATHER % TMIN
+  !    TWILEN = WEATHER % TWILEN
+
+
+!use DDSAT_DATA
+!IMPLICIT NONE
+!CALL XXXX
+END SUBROUTINE interface_plant_inityr
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_plant_initday
+use parm
+IMPLICIT NONE
+END SUBROUTINE interface_plant_initday
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_ETPOT
+! Plant evaporation/transpiration
+USE PARM
+USE ModuleDefs
+IMPLICIT NONE
+CHARACTER*1 MEEVP
+REAL::CANHT,ET_ALB,XHLAI,EORATIO,EO
+REAL,DIMENSION(TS)::ET0
+TYPE(ControlType) CONTROL
+TYPE(WeatherType) WEATHER
+!USE DDSAT_DATA
+CALL PET(CONTROL,ET_ALB, XHLAI, MEEVP, WEATHER,&  !Input for all
+EORATIO,CANHT,EO,ET0)     
+
+!CALL PET from DSSAT 
+END SUBROUTINE interface_ETPOT
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_ETACT
+! Evaporation from ground
+
+USE PARM       ! from SWAT
+use ModuleDefs ! from DSSAT
+!USE DDSAT_DATA
+IMPLICIT NONE
+!CALL ESR_SoilEvap !DSSAT 
+END SUBROUTINE interface_ETACT
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_plant
+implicit none
+!write(*,*)'TO simulate SWAT plants',interface_ihru
+CALL plantmod ! from SWAT side to simulate trees and perennials
+
+END SUBROUTINE interface_plant
+
+
+
+SUBROUTINE interface_plantmod
+use PARM
+use ModuleDefs
+USE FloodModule
+IMPLICIT NONE
+REAL::CANHT,EOP,HARVFRAC(2),NH4(NL),NO3(NL),ST(NL),SW(NL),EORATIO,KTRANS,NSTRES,PStres1
+REAL::PORMIN,RLV(NL),RWUMX,UNH4(NL),UNO3(NL),XHLAI,XLAI,KSEVAP,TRWUP
+REAL,DIMENSION(NL)::SPi_AVAIL,PUptake,FracRts
+INTEGER::YREND,YRPLT,STGDOY(20),MDATE
+
+REAL::EO,EOS,EP,ES,SNOW,SRFTEMP,TRWU
+REAL, DIMENSION(NL) :: UPPM,Kuptake,SKi_Avail,UH2O  !, RWU
+REAL, DIMENSION(0:NL) :: SomLitC
+REAL, DIMENSION(0:NL,NELEM) :: SomLitE
+TYPE (ControlType) CONTROL
+TYPE (SoilType) SOILPROP
+TYPE (SwitchType) ISWITCH
+Type (ResidueType) HARVRES
+Type (ResidueType) SENESCE
+Type (WeatherType) WEATHER
+TYPE (FloodWatType) FLOODWAT
+TYPE (FloodNType)   FLOODN
+
+!    CaLL  CROPGRO model FROM dssat SIDE
+
+!        CALL CROPGRO(CONTROL, ISWITCH,&
+!          EOP, HARVFRAC, NH4, NO3, SOILPROP, SPi_AVAIL,&   !Input
+!          ST, SW, TRWUP, WEATHER, YREND, YRPLT,&           !Input
+!          CANHT, EORATIO, HARVRES, KSEVAP, KTRANS, MDATE,& !Output
+!          NSTRES, PSTRES1,&                                !Output
+!          PUptake, PORMIN, RLV, RWUMX, SENESCE,&           !Output
+!          STGDOY, FracRts, UNH4, UNO3, XHLAI, XLAI)       !Output
+
+      call PLANT(CONTROL, ISWITCH,&
+       EO, EOP, EOS, EP, ES, FLOODWAT, HARVFRAC,&!       !Input
+         NH4, NO3, SKi_Avail, SomLitC, SomLitE,&!          !Input
+         SPi_AVAIL, SNOW, SOILPROP, SRFTEMP, ST, SW,&!     !Input
+         TRWU, TRWUP, UPPM, WEATHER, YREND, YRPLT,&!       !Input
+         IRRAMT,&!                                         !Input
+         FLOODN,&!                                         !I/O
+         CANHT, EORATIO, HARVRES, KSEVAP, KTRANS,&!        !Output
+         KUptake, MDATE, NSTRES, PSTRES1,&!                !Output
+         PUptake, PORMIN, RLV, RWUMX, SENESCE,&!           !Output
+         STGDOY, FracRts, UH2O, UNH4, UNO3, XHLAI, XLAI) !Output
+
+
+END SUBROUTINE interface_plantmod
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_agroforestry
+IMPLICIT NONE
+END SUBROUTINE interface_agroforestry
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SUBROUTINE interface_albedo
+IMPLICIT NONE
+END SUBROUTINE interface_albedo
+
+
+
+END MODULE interface2

@@ -1,0 +1,47 @@
+
+ SOILDYN  YEAR DOY =    0   0
+ Surface runoff curve number has been changed from   0.0 to  80.0.             
+
+ SOILDYN  YEAR DOY =    0   0
+ Stage 1 soil evaporation limit has been set to   6.0.                         
+
+ SOILDYN  YEAR DOY =    0   0
+ A default soil water conductivity constant will be used:                      
+ SWCON =  0.25 (fraction/day).                                                 
+
+ IPSOIL  YEAR DOY =    0   0
+ File does not exist:                                                          
+ RESCH048.SDA                                                                  
+ Default residue characteristics will be used.                                 
+
+ PUT_REAL  YEAR DOY =    0   0
+ Error transferring variable: SPi_Solublein ToSwat                             
+ Value not saved! Errors may result.                                           
+
+ SOILDYN  YEAR DOY =    0   0
+ Surface runoff curve number has been changed from   0.0 to  80.0.             
+
+ SOILDYN  YEAR DOY =    0   0
+ Stage 1 soil evaporation limit has been set to   6.0.                         
+
+ SOILDYN  YEAR DOY =    0   0
+ A default soil water conductivity constant will be used:                      
+ SWCON =  0.25 (fraction/day).                                                 
+
+ PUT_REAL  YEAR DOY =    0   0
+ Error transferring variable: SPi_Solublein ToSwat                             
+ Value not saved! Errors may result.                                           
+
+ SOILDYN  YEAR DOY =    0   0
+ Surface runoff curve number has been changed from   0.0 to  80.0.             
+
+ SOILDYN  YEAR DOY =    0   0
+ Stage 1 soil evaporation limit has been set to   6.0.                         
+
+ SOILDYN  YEAR DOY =    0   0
+ A default soil water conductivity constant will be used:                      
+ SWCON =  0.25 (fraction/day).                                                 
+
+ PUT_REAL  YEAR DOY =    0   0
+ Error transferring variable: SPi_Solublein ToSwat                             
+ Value not saved! Errors may result.                                           
